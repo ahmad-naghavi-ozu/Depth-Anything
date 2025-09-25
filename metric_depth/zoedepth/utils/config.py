@@ -227,6 +227,40 @@ DATASETS_CONFIG = {
         "min_depth": 1e-3,
         "max_depth": 80,
     },
+    "remote_sensing": {
+        "dataset": "remote_sensing",
+        "rs_root": os.path.join(HOME_DIR, "remote_sensing/"),
+        "eigen_crop": False,
+        "garg_crop": False,
+        "do_kb_crop": False,
+        "min_depth_eval": 0.1,
+        "max_depth_eval": 200,  # Typical building heights in meters
+        "min_depth": 0.1,
+        "max_depth": 200,
+        "input_height": 512,
+        "input_width": 512,
+        "height_scale_factor": 1.0,  # Adjust based on your DSM units
+        "max_height": 200,  # Maximum building height in meters
+        "do_random_rotate": False,  # RS images are typically oriented
+        "degree": 0.0,
+    },
+    "rs": {  # Alias for remote_sensing
+        "dataset": "remote_sensing",
+        "rs_root": os.path.join(HOME_DIR, "remote_sensing/"),
+        "eigen_crop": False,
+        "garg_crop": False,
+        "do_kb_crop": False,
+        "min_depth_eval": 0.1,
+        "max_depth_eval": 200,
+        "min_depth": 0.1,
+        "max_depth": 200,
+        "input_height": 512,
+        "input_width": 512,
+        "height_scale_factor": 1.0,
+        "max_height": 200,
+        "do_random_rotate": False,
+        "degree": 0.0,
+    },
 }
 
 ALL_INDOOR = ["nyu", "ibims", "sunrgbd", "diode_indoor", "hypersim_test"]

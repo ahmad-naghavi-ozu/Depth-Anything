@@ -56,6 +56,10 @@ This work presents Depth Anything, a highly practical solution for robust monocu
 
     The Depth Anything encoder can be fine-tuned to downstream high-level perception tasks, *e.g.*, semantic segmentation, 86.2 mIoU on Cityscapes and 59.4 mIoU on ADE20K. Please refer [here](./semseg/) for details.
 
+- **Remote Sensing (RS) Height Estimation**
+
+    We provide an adaptation for processing satellite/aerial RGB imagery to produce height maps (Digital Surface Models) for building height estimation and urban analysis. This adaptation maintains the original pipeline while adding RS-specific data handling. Please refer to [technical documentation](./docs/technical/) for details.
+
 
 ## Performance
 
