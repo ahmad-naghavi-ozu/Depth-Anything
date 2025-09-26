@@ -3,12 +3,24 @@
 """
 Training script for Remote Sensing Height Estimation using Depth Anything
 
-This script is adapted from the original train_mono.py for RS-specific requirements.
-For detailed documentation, see: docs/technical/README_RS.md and docs/technical/RS_CONFIG_GUIDE.md
+This script supports multiple RS datasets (DFC2023, DFC2019, etc.) with a unified interface.
+Just change the --rs-dataset parameter to switch between different datasets.
+
+Supported datasets:
+- dfc2023: IEEE Data Fusion Contest 2023
+- dfc2023mini: Mini version for debugging  
+- dfc2019: IEEE Data Fusion Contest 2019
+- custom: User-defined datasets
 
 Usage:
-    python train_rs.py -m zoedepth -d remote_sensing --rs-root /path/to/dataset
+    python train_rs.py -m zoedepth --rs-dataset dfc2023mini
+    python train_rs.py -m zoedepth --rs-dataset dfc2023 --rs-root /custom/path
+    python train_rs.py -m zoedepth --rs-dataset custom --rs-root /path/to/dataset
 """
+
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'metric_depth'))
 
 from zoedepth.utils.misc import count_parameters, parallelize
 from zoedepth.utils.config import get_config
@@ -23,6 +35,9 @@ import numpy as np
 from pprint import pprint
 import argparse
 import os
+
+# Import our generic RS configuration
+from rs_config import get_rs_config, RSDatasetConfig
 
 os.environ["PYOPENGL_PLATFORM"] = "egl"
 os.environ["WANDB_START_METHOD"] = "thread"
@@ -89,11 +104,10 @@ def main_worker(gpu, ngpus_per_node, config):
         trainer = get_trainer(config)(
             config, model, train_loader, test_loader, device=config.gpu)
 
-        print("Starting Remote Sensing Height Estimation Training...")
-        print(f"Dataset: {config.dataset}")
-        print(f"Data root: {config.rs_root}")
-        print(f"Height scale factor: {config.height_scale_factor}")
-        print(f"Max height: {config.max_height}")
+        print("\nStarting Remote Sensing Height Estimation Training...")
+        print(f"Total model parameters: {total_params}")
+        if hasattr(config, 'dataset_info'):
+            print(f"Training on: {config.dataset_info['name']}")
         
         trainer.train()
         
@@ -105,27 +119,9 @@ def main_worker(gpu, ngpus_per_node, config):
         wandb.finish()
 
 
-def validate_rs_dataset(rs_root):
-    """Validate that the RS dataset has the correct structure"""
-    splits = ['train', 'valid', 'test']
-    required_folders = ['rgb', 'dsm']
-    
-    print(f"Validating RS dataset at: {rs_root}")
-    
-    for split in splits:
-        split_path = os.path.join(rs_root, split)
-        if not os.path.exists(split_path):
-            print(f"Warning: Missing {split} split directory")
-            continue
-            
-        for folder in required_folders:
-            folder_path = os.path.join(split_path, folder)
-            if not os.path.exists(folder_path):
-                print(f"Warning: Missing {folder} folder in {split} split")
-            else:
-                file_count = len([f for f in os.listdir(folder_path) 
-                                if f.lower().endswith(('.png', '.jpg', '.jpeg', '.tif', '.tiff'))])
-                print(f"Found {file_count} files in {split}/{folder}")
+def validate_rs_dataset(rs_config):
+    """Validate RS dataset using the generic configuration"""
+    return rs_config.validate_dataset_structure()
 
 
 if __name__ == '__main__':
@@ -136,40 +132,77 @@ if __name__ == '__main__':
                        help="Model architecture to use")
     parser.add_argument("-d", "--dataset", type=str, default='remote_sensing', 
                        choices=['remote_sensing', 'rs'],
-                       help='Dataset name for RS height estimation')
+                       help='Dataset type (always remote_sensing for RS datasets)')
     parser.add_argument("--trainer", type=str, default=None,
                        help="Trainer type (optional)")
+    
+    # New RS dataset configuration parameters
+    parser.add_argument("--rs-dataset", type=str, default="dfc2023mini",
+                       help="RS dataset name (dfc2023, dfc2023mini, dfc2019, custom)")
     parser.add_argument("--rs-root", type=str, default=None,
-                       help="Root directory of RS dataset")
-    parser.add_argument("--height-scale-factor", type=float, default=1.0,
-                       help="Scale factor for converting DSM values to meters")
-    parser.add_argument("--max-height", type=float, default=200.0,
-                       help="Maximum building height in meters")
+                       help="Root directory of RS dataset (overrides default)")
+    parser.add_argument("--list-datasets", action="store_true",
+                       help="List available predefined RS datasets")
     parser.add_argument("--validate-data", action="store_true",
                        help="Validate dataset structure before training")
+    
+    # Training parameters  
+    parser.add_argument("--height-scale-factor", type=float, default=None,
+                       help="Height scale factor (overrides dataset default)")
+    parser.add_argument("--max-height", type=float, default=None,
+                       help="Maximum height in meters (overrides dataset default)")
 
     args, unknown_args = parser.parse_known_args()
+    
+    # Handle dataset listing
+    if args.list_datasets:
+        RSDatasetConfig.list_available_datasets()
+        exit(0)
+    
+    # Initialize RS dataset configuration
+    print(f"Initializing RS dataset configuration for: {args.rs_dataset}")
+    rs_config = get_rs_config(args.rs_dataset, args.rs_root)
+    
+    # Validate dataset if requested
+    if args.validate_data:
+        print("\n" + "="*60)
+        if not validate_rs_dataset(rs_config):
+            response = input("Dataset validation failed. Continue anyway? (y/n): ")
+            if response.lower() != 'y':
+                print("Training cancelled.")
+                exit(1)
+        else:
+            response = input("Dataset validation passed. Continue with training? (y/n): ")
+            if response.lower() != 'y':
+                print("Training cancelled.")
+                exit(0)
+    
     overwrite_kwargs = parse_unknown(unknown_args)
-
     overwrite_kwargs["model"] = args.model
     if args.trainer is not None:
         overwrite_kwargs["trainer"] = args.trainer
 
-    # RS-specific overrides
-    if args.rs_root is not None:
-        overwrite_kwargs["rs_root"] = args.rs_root
-    overwrite_kwargs["height_scale_factor"] = args.height_scale_factor
-    overwrite_kwargs["max_height"] = args.max_height
+    # Get RS configuration parameters
+    rs_train_config = rs_config.get_training_config_dict()
+    
+    # Apply RS-specific overrides
+    overwrite_kwargs["rs_root"] = rs_train_config["rs_root"]
+    
+    # Use custom parameters if provided, otherwise use dataset defaults
+    if args.height_scale_factor is not None:
+        overwrite_kwargs["height_scale_factor"] = args.height_scale_factor
+    else:
+        overwrite_kwargs["height_scale_factor"] = rs_train_config["height_scale_factor"]
+        
+    if args.max_height is not None:
+        overwrite_kwargs["max_height"] = args.max_height  
+    else:
+        overwrite_kwargs["max_height"] = rs_train_config["max_height"]
+        
+    overwrite_kwargs["image_size"] = rs_train_config["image_size"]
+    overwrite_kwargs["dataset_info"] = rs_train_config["dataset_info"]
 
     config = get_config(args.model, "train", args.dataset, **overwrite_kwargs)
-
-    # Validate dataset if requested
-    if args.validate_data:
-        validate_rs_dataset(config.rs_root)
-        response = input("Continue with training? (y/n): ")
-        if response.lower() != 'y':
-            print("Training cancelled.")
-            exit(0)
 
     # Set up distributed training configuration
     if config.use_shared_dict:
@@ -207,8 +240,17 @@ if __name__ == '__main__':
     config.num_workers = config.workers
     config.ngpus_per_node = ngpus_per_node
     
-    print("Remote Sensing Training Configuration:")
-    pprint(config)
+    print("\n" + "="*60)
+    print("REMOTE SENSING TRAINING CONFIGURATION")
+    print("="*60)
+    print(f"Dataset: {rs_train_config['dataset_info']['name']}")
+    print(f"Description: {rs_train_config['dataset_info']['description']}")
+    print(f"Data root: {config.rs_root}")
+    print(f"Height scale factor: {config.height_scale_factor}")
+    print(f"Max height: {config.max_height}m")
+    print(f"Image size: {config.image_size}")
+    print(f"GPUs available: {ngpus_per_node}")
+    print("="*60)
     
     if config.distributed:
         config.world_size = ngpus_per_node * config.world_size
