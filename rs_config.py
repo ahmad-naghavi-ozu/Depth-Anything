@@ -48,6 +48,10 @@ class RSDatasetConfig:
                 'rgb': ['.png', '.jpg', '.jpeg', '.tif', '.tiff'],
                 'dsm': ['.tif', '.tiff', '.png'],
                 'sem': ['.png', '.tif', '.tiff']
+            },
+            'wandb_settings': {
+                'entity': 'ahmad-naghavi',
+                'project_prefix': 'DepthAnything-RS-DFC2023'
             }
         },
         'dfc2023mini': {

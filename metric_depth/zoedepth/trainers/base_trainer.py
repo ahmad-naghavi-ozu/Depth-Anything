@@ -152,8 +152,16 @@ class BaseTrainer:
         if self.should_log:
             tags = self.config.tags.split(
                 ',') if self.config.tags != '' else None
-            wandb.init(project=self.config.project, name=self.config.experiment_id, config=flatten(self.config), dir=self.config.root,
-                       tags=tags, notes=self.config.notes, settings=wandb.Settings(start_method="fork"))
+            wandb.init(
+                entity="ahmad-naghavi",  # Your wandb username
+                project=self.config.project, 
+                name=self.config.experiment_id, 
+                config=flatten(self.config), 
+                dir=self.config.root,
+                tags=tags, 
+                notes=self.config.notes, 
+                settings=wandb.Settings(start_method="fork")
+            )
 
         self.model.train()
         self.step = 0
