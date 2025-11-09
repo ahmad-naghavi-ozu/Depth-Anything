@@ -9,6 +9,12 @@ from tqdm import tqdm
 import tifffile
 import logging
 from datetime import datetime
+import warnings
+
+# Suppress warnings from deep learning libraries
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 from depth_anything.dpt import DepthAnything
 from depth_anything.util.transform import Resize, NormalizeImage, PrepareForNet

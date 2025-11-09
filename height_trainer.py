@@ -7,6 +7,12 @@ from dataset import RemoteSensingHeightDataset
 from torch.utils.data import DataLoader
 import os
 from tqdm import tqdm
+import warnings
+
+# Suppress warnings from deep learning libraries
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 class HeightTrainer:
     def __init__(self, model, loss_type='l1', device='cuda'):
