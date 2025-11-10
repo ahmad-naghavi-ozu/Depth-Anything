@@ -129,7 +129,7 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoints_dir', type=str, default='checkpoints', help='Directory to save checkpoints')
     parser.add_argument('--logs_dir', type=str, default='logs', help='Directory to save logs')
     parser.add_argument('--results_dir', type=str, default='results/height_adapted_01', help='Directory to save results')
-    parser.add_argument('--freeze_encoder', action='store_true', help='Freeze DINOv2 encoder during training')
+    parser.add_argument('--freeze_encoder', action='store_true', default=True, help='Freeze DINOv2 encoder during training (default: True). Use --no-freeze_encoder to train encoder.')
 
     args = parser.parse_args()
 
@@ -183,12 +183,18 @@ if __name__ == '__main__':
     # Create trainer
     trainer = HeightTrainer(model, loss_type=args.loss_type, device=device)
     
-    # Optionally freeze encoder for light tuning
-    if hasattr(args, 'freeze_encoder') and args.freeze_encoder:
+    # Freeze/unfreeze encoder based on --freeze_encoder flag
+    if args.freeze_encoder:
+        # Freeze encoder, train only decoder (default for transfer learning)
         for name, param in model.named_parameters():
             if 'pretrained' in name:  # DINOv2 encoder parameters
                 param.requires_grad = False
-        print("Encoder frozen for light tuning")
+        print("Encoder (DINOv2) frozen - training only decoder (DPT Head)")
+        logging.info("Training mode: Decoder-only fine-tuning (encoder frozen)")
+    else:
+        # Train both encoder and decoder
+        print("Training both encoder (DINOv2) and decoder (DPT Head)")
+        logging.info("Training mode: Full fine-tuning (encoder + decoder)")
     
     trainer.optimizer = torch.optim.Adam(
         [param for param in model.parameters() if param.requires_grad], 
