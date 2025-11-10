@@ -124,6 +124,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=1e-5, help='Learning rate')
     parser.add_argument('--use_validation', action='store_true', help='Use validation set for early stopping')
     parser.add_argument('--patience', type=int, default=5, help='Early stopping patience (epochs)')
+    parser.add_argument('--resume_from', type=str, default=None, help='Path to checkpoint to resume training from')
     parser.add_argument('--model_size', type=str, default='vits', choices=['vits', 'vitb', 'vitl'], help='Model size (ViT variant)')
     parser.add_argument('--checkpoints_dir', type=str, default='checkpoints', help='Directory to save checkpoints')
     parser.add_argument('--logs_dir', type=str, default='logs', help='Directory to save logs')
@@ -151,18 +152,25 @@ if __name__ == '__main__':
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # Load pre-trained DepthAnything model from local checkpoint
-    local_checkpoint = f'checkpoints/depth_anything_{args.model_size}14.pth'
-    if os.path.exists(local_checkpoint):
-        print(f"Loading local checkpoint: {local_checkpoint}")
+    # Load pre-trained DepthAnything model from local checkpoint or resume from fine-tuned checkpoint
+    if args.resume_from:
+        print(f"Resuming training from: {args.resume_from}")
         model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
-        checkpoint = torch.load(local_checkpoint, map_location='cpu')
+        checkpoint = torch.load(args.resume_from, map_location='cpu')
         model.load_state_dict(checkpoint)
-        logging.info(f"Loaded local checkpoint: {local_checkpoint}")
+        logging.info(f"Resumed training from checkpoint: {args.resume_from}")
     else:
-        print(f"Local checkpoint not found, downloading from HuggingFace")
-        model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
-        logging.info(f"Downloaded model from HuggingFace")
+        local_checkpoint = f'checkpoints/depth_anything_{args.model_size}14.pth'
+        if os.path.exists(local_checkpoint):
+            print(f"Loading local checkpoint: {local_checkpoint}")
+            model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
+            checkpoint = torch.load(local_checkpoint, map_location='cpu')
+            model.load_state_dict(checkpoint)
+            logging.info(f"Loaded local checkpoint: {local_checkpoint}")
+        else:
+            print(f"Local checkpoint not found, downloading from HuggingFace")
+            model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
+            logging.info(f"Downloaded model from HuggingFace")
 
     # Create datasets
     dataset = RemoteSensingHeightDataset(dataset_path, split='train')
@@ -197,7 +205,8 @@ if __name__ == '__main__':
     trainer.train(dataset, epochs=args.epochs, batch_size=args.batch_size, 
                   val_dataset=val_dataset, patience=args.patience, checkpoint_path=save_path)
 
-    # Save final model
-    trainer.save_model(save_path)
-    logging.info(f"Final model saved to {save_path}")
-    print(f"Final model saved to {save_path}")
+    # Save final model with _last suffix
+    final_save_path = save_path.replace('.pth', '_last.pth')
+    trainer.save_model(final_save_path)
+    logging.info(f"Final model saved to {final_save_path}")
+    print(f"Final model saved to {final_save_path}")

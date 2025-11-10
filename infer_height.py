@@ -119,17 +119,32 @@ if __name__ == '__main__':
         pred_filename = filename.replace('.tif', '_pred_height.npy')
         np.save(os.path.join(results_dir, pred_filename), pred_height)
 
-        # Save visualization
-        pred_norm = (pred_height - pred_height.min()) / (pred_height.max() - pred_height.min()) * 255
+        # Save visualization (handle near-zero predictions)
+        pred_range = pred_height.max() - pred_height.min()
+        if pred_range > 1e-6:  # Avoid division by zero
+            pred_norm = (pred_height - pred_height.min()) / pred_range * 255
+        else:
+            # If predictions are all nearly the same, just visualize as is
+            pred_norm = np.clip(pred_height * 10, 0, 255)  # Scale up small values
         pred_norm = pred_norm.astype(np.uint8)
         pred_color = cv2.applyColorMap(pred_norm, cv2.COLORMAP_INFERNO)
 
         vis_filename = filename.replace('.tif', '_height_vis.png')
         cv2.imwrite(os.path.join(results_dir, vis_filename), pred_color)
 
-        # Log
+        # Log metrics and check for potential issues
         mse = np.mean((pred_height - gt_height) ** 2)
         mae = np.mean(np.abs(pred_height - gt_height))
-        logging.info(f"{filename}: MSE={mse:.4f}, MAE={mae:.4f}")
+        pred_max = pred_height.max()
+        gt_max = gt_height.max()
+        
+        logging.info(f"{filename}: MSE={mse:.4f}, MAE={mae:.4f}, Pred_max={pred_max:.4f}, GT_max={gt_max:.4f}")
+        
+        # Warning if predictions are suspiciously low
+        if pred_max < 1.0 and gt_max > 5.0:
+            warning_msg = f"WARNING: Predictions very low (max={pred_max:.4f}) vs GT (max={gt_max:.4f}). Model may need more training."
+            logging.warning(warning_msg)
+            if filename == rgb_files[0]:  # Print warning once
+                print(warning_msg)
 
     logging.info("Inference completed")
