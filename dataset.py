@@ -36,8 +36,8 @@ class RemoteSensingHeightDataset(Dataset):
         if transform is None:
             self.transform = Compose([
                 Resize(
-                    width=518,
-                    height=518,
+                    width=512,
+                    height=512,
                     resize_target=False,
                     keep_aspect_ratio=True,
                     ensure_multiple_of=14,
@@ -74,9 +74,9 @@ class RemoteSensingHeightDataset(Dataset):
         # Apply transform to RGB
         rgb_transformed = self.transform({'image': rgb})['image']  # Should be tensor C x H x W
 
-        # Resize DSM to match the transformed RGB size (518 x 518)
+        # Resize DSM to match the transformed RGB size (512 x 512)
         dsm_resized = torch.from_numpy(dsm).unsqueeze(0).unsqueeze(0)  # 1 x 1 x H x W
-        dsm_resized = torch.nn.functional.interpolate(dsm_resized, size=(518, 518), mode='bilinear', align_corners=False)
+        dsm_resized = torch.nn.functional.interpolate(dsm_resized, size=(512, 512), mode='bilinear', align_corners=False)
         dsm_resized = dsm_resized.squeeze()  # H x W
 
         return rgb_transformed, dsm_resized

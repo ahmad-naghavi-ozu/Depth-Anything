@@ -20,8 +20,8 @@ from depth_anything.dpt import DepthAnything
 from depth_anything.util.transform import Resize, NormalizeImage, PrepareForNet
 
 
-def load_model(checkpoint_path, encoder='vits'):
-    model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{encoder}14')
+def load_model(checkpoint_path, model_size='vits'):
+    model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{model_size}14')
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
     model.load_state_dict(checkpoint)
     return model
@@ -54,7 +54,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_name', type=str, default='DFC2023S', help='Name of the dataset')
     parser.add_argument('--dataset_base_path', type=str, default='/home/asfand/Ahmad/datasets/', help='Base path to datasets')
     parser.add_argument('--checkpoint_path', type=str, help='Path to the fine-tuned checkpoint')
-    parser.add_argument('--encoder', type=str, default='vits', choices=['vits', 'vitb', 'vitl'], help='Encoder type')
+    parser.add_argument('--model_size', type=str, default='vits', choices=['vits', 'vitb', 'vitl'], help='Model size (ViT variant)')
     parser.add_argument('--split', type=str, default='test', choices=['train', 'valid', 'test'], help='Dataset split to infer on')
     parser.add_argument('--results_dir', type=str, default='results/height_adapted_01', help='Base results directory')
     parser.add_argument('--logs_dir', type=str, default='logs', help='Base logs directory')
@@ -76,7 +76,7 @@ if __name__ == '__main__':
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # Load model
-    model = load_model(args.checkpoint_path, args.encoder).to(device).eval()
+    model = load_model(args.checkpoint_path, args.model_size).to(device).eval()
     logging.info(f"Loaded model from {args.checkpoint_path}")
 
     # Transform

@@ -80,7 +80,7 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoints_dir', type=str, default='checkpoints', help='Directory to save checkpoints')
     parser.add_argument('--logs_dir', type=str, default='logs', help='Directory to save logs')
     parser.add_argument('--results_dir', type=str, default='results/height_adapted_01', help='Directory to save results')
-    parser.add_argument('--encoder', type=str, default='vitl', choices=['vits', 'vitb', 'vitl'], help='Encoder type')
+    parser.add_argument('--freeze_encoder', action='store_true', help='Freeze DINOv2 encoder during training')
 
     args = parser.parse_args()
 
@@ -104,14 +104,25 @@ if __name__ == '__main__':
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # Load pre-trained DepthAnything model
-    model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.encoder}14')
+    model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
 
     # Create dataset
     dataset = RemoteSensingHeightDataset(dataset_path, split='train')
 
     # Create trainer
     trainer = HeightTrainer(model, loss_type=args.loss_type, device=device)
-    trainer.optimizer = torch.optim.Adam(trainer.model.parameters(), lr=args.lr)
+    
+    # Optionally freeze encoder for light tuning
+    if hasattr(args, 'freeze_encoder') and args.freeze_encoder:
+        for name, param in model.named_parameters():
+            if 'pretrained' in name:  # DINOv2 encoder parameters
+                param.requires_grad = False
+        print("Encoder frozen for light tuning")
+    
+    trainer.optimizer = torch.optim.Adam(
+        [param for param in model.parameters() if param.requires_grad], 
+        lr=args.lr
+    )
 
     logging.info(f"Starting training with loss: {args.loss_type}, epochs: {args.epochs}, batch_size: {args.batch_size}, lr: {args.lr}")
     print(f"Starting training with loss: {args.loss_type}")
@@ -120,7 +131,7 @@ if __name__ == '__main__':
     trainer.train(dataset, epochs=args.epochs, batch_size=args.batch_size)
 
     # Save fine-tuned model
-    save_path = os.path.join(checkpoints_dir, f'depth_anything_height_finetuned_{args.loss_type}_{args.encoder}.pth')
+    save_path = os.path.join(checkpoints_dir, f'depth_anything_height_finetuned_{args.loss_type}_{args.model_size}.pth')
     trainer.save_model(save_path)
     logging.info(f"Model saved to {save_path}")
     print(f"Model saved to {save_path}")
