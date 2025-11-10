@@ -30,6 +30,8 @@ class HeightTrainer:
         
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
         self.scaler = amp.GradScaler()
+        self.best_val_loss = float('inf')
+        self.patience_counter = 0
 
     def train_on_batch(self, rgb, height_gt):
         rgb = rgb.to(self.device)
@@ -48,7 +50,25 @@ class HeightTrainer:
 
         return loss.item()
 
-    def train(self, dataset, epochs=10, batch_size=4):
+    def validate(self, val_dataset, batch_size=4):
+        """Validate the model on validation dataset"""
+        self.model.eval()
+        val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+        total_val_loss = 0
+        
+        with torch.no_grad():
+            for rgb, height_gt in val_dataloader:
+                rgb = rgb.to(self.device)
+                height_gt = height_gt.to(self.device)
+                
+                pred_height = self.model(rgb)
+                loss = self.criterion(pred_height.unsqueeze(1), height_gt.unsqueeze(1))
+                total_val_loss += loss.item()
+        
+        self.model.train()
+        return total_val_loss / len(val_dataloader)
+    
+    def train(self, dataset, epochs=10, batch_size=4, val_dataset=None, patience=5, checkpoint_path=None):
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
         for epoch in tqdm(range(epochs), desc="Epochs"):
@@ -58,8 +78,33 @@ class HeightTrainer:
                 total_loss += loss
 
             avg_loss = total_loss / len(dataloader)
-            print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}")
-            logging.info(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}")
+            print(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.4f}")
+            logging.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.4f}")
+            
+            # Validation and early stopping
+            if val_dataset is not None:
+                val_loss = self.validate(val_dataset, batch_size)
+                print(f"Epoch {epoch+1}/{epochs}, Val Loss: {val_loss:.4f}")
+                logging.info(f"Epoch {epoch+1}/{epochs}, Val Loss: {val_loss:.4f}")
+                
+                # Early stopping logic
+                if val_loss < self.best_val_loss:
+                    self.best_val_loss = val_loss
+                    self.patience_counter = 0
+                    if checkpoint_path:
+                        best_checkpoint = checkpoint_path.replace('.pth', '_best.pth')
+                        self.save_model(best_checkpoint)
+                        print(f"Best model saved to {best_checkpoint}")
+                        logging.info(f"Best model saved with val_loss: {val_loss:.4f}")
+                else:
+                    self.patience_counter += 1
+                    print(f"No improvement. Patience: {self.patience_counter}/{patience}")
+                    logging.info(f"No improvement. Patience: {self.patience_counter}/{patience}")
+                    
+                    if self.patience_counter >= patience:
+                        print(f"Early stopping triggered after {epoch+1} epochs")
+                        logging.info(f"Early stopping triggered after {epoch+1} epochs")
+                        break
 
     def save_model(self, path):
         torch.save(self.model.state_dict(), path)
@@ -77,6 +122,9 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size')
     parser.add_argument('--lr', type=float, default=1e-5, help='Learning rate')
+    parser.add_argument('--use_validation', action='store_true', help='Use validation set for early stopping')
+    parser.add_argument('--patience', type=int, default=5, help='Early stopping patience (epochs)')
+    parser.add_argument('--model_size', type=str, default='vits', choices=['vits', 'vitb', 'vitl'], help='Model size (ViT variant)')
     parser.add_argument('--checkpoints_dir', type=str, default='checkpoints', help='Directory to save checkpoints')
     parser.add_argument('--logs_dir', type=str, default='logs', help='Directory to save logs')
     parser.add_argument('--results_dir', type=str, default='results/height_adapted_01', help='Directory to save results')
@@ -84,10 +132,10 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    # Create directories
-    checkpoints_dir = os.path.join(args.checkpoints_dir, args.dataset_name)
-    logs_dir = os.path.join(args.logs_dir, args.dataset_name)
-    results_dir = os.path.join(args.results_dir, args.dataset_name)
+    # Create directories organized by dataset and model size
+    checkpoints_dir = os.path.join(args.checkpoints_dir, args.dataset_name, args.model_size)
+    logs_dir = os.path.join(args.logs_dir, args.dataset_name, args.model_size)
+    results_dir = os.path.join(args.results_dir, args.dataset_name, args.model_size)
     os.makedirs(checkpoints_dir, exist_ok=True)
     os.makedirs(logs_dir, exist_ok=True)
     os.makedirs(results_dir, exist_ok=True)
@@ -103,11 +151,26 @@ if __name__ == '__main__':
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # Load pre-trained DepthAnything model
-    model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
+    # Load pre-trained DepthAnything model from local checkpoint
+    local_checkpoint = f'checkpoints/depth_anything_{args.model_size}14.pth'
+    if os.path.exists(local_checkpoint):
+        print(f"Loading local checkpoint: {local_checkpoint}")
+        model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
+        checkpoint = torch.load(local_checkpoint, map_location='cpu')
+        model.load_state_dict(checkpoint)
+        logging.info(f"Loaded local checkpoint: {local_checkpoint}")
+    else:
+        print(f"Local checkpoint not found, downloading from HuggingFace")
+        model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
+        logging.info(f"Downloaded model from HuggingFace")
 
-    # Create dataset
+    # Create datasets
     dataset = RemoteSensingHeightDataset(dataset_path, split='train')
+    val_dataset = None
+    if args.use_validation:
+        val_dataset = RemoteSensingHeightDataset(dataset_path, split='valid')
+        print(f"Using validation set with {len(val_dataset)} samples")
+        logging.info(f"Using validation set with {len(val_dataset)} samples")
 
     # Create trainer
     trainer = HeightTrainer(model, loss_type=args.loss_type, device=device)
@@ -125,13 +188,16 @@ if __name__ == '__main__':
     )
 
     logging.info(f"Starting training with loss: {args.loss_type}, epochs: {args.epochs}, batch_size: {args.batch_size}, lr: {args.lr}")
-    print(f"Starting training with loss: {args.loss_type}")
+    print(f"Starting training with model_size: {args.model_size}, loss: {args.loss_type}")
+
+    # Prepare checkpoint path for early stopping
+    save_path = os.path.join(checkpoints_dir, f'depth_anything_height_finetuned_{args.loss_type}_{args.model_size}.pth')
 
     # Train
-    trainer.train(dataset, epochs=args.epochs, batch_size=args.batch_size)
+    trainer.train(dataset, epochs=args.epochs, batch_size=args.batch_size, 
+                  val_dataset=val_dataset, patience=args.patience, checkpoint_path=save_path)
 
-    # Save fine-tuned model
-    save_path = os.path.join(checkpoints_dir, f'depth_anything_height_finetuned_{args.loss_type}_{args.model_size}.pth')
+    # Save final model
     trainer.save_model(save_path)
-    logging.info(f"Model saved to {save_path}")
-    print(f"Model saved to {save_path}")
+    logging.info(f"Final model saved to {save_path}")
+    print(f"Final model saved to {save_path}")

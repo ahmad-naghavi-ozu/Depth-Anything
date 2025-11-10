@@ -33,11 +33,12 @@ class RemoteSensingHeightDataset(Dataset):
             raise ValueError(f"Number of RGB files ({len(self.rgb_files)}) does not match DSM files ({len(self.dsm_files)})")
 
         # Default transform similar to Depth_Anything inference
+        # 518 = 14 * 37, ensuring perfect alignment with ViT patch size
         if transform is None:
             self.transform = Compose([
                 Resize(
-                    width=512,
-                    height=512,
+                    width=518,
+                    height=518,
                     resize_target=False,
                     keep_aspect_ratio=True,
                     ensure_multiple_of=14,
@@ -74,9 +75,10 @@ class RemoteSensingHeightDataset(Dataset):
         # Apply transform to RGB
         rgb_transformed = self.transform({'image': rgb})['image']  # Should be tensor C x H x W
 
-        # Resize DSM to match the transformed RGB size (512 x 512)
+        # Resize DSM to match the transformed RGB size (518 x 518)
+        # 518 = 14 * 37, perfect multiple for ViT patches
         dsm_resized = torch.from_numpy(dsm).unsqueeze(0).unsqueeze(0)  # 1 x 1 x H x W
-        dsm_resized = torch.nn.functional.interpolate(dsm_resized, size=(512, 512), mode='bilinear', align_corners=False)
+        dsm_resized = torch.nn.functional.interpolate(dsm_resized, size=(518, 518), mode='bilinear', align_corners=False)
         dsm_resized = dsm_resized.squeeze()  # H x W
 
         return rgb_transformed, dsm_resized
