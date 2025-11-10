@@ -15,9 +15,16 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 class HeightTrainer:
-    def __init__(self, model, loss_type='l1', device='cuda'):
+    def __init__(self, model, loss_type='l1', device='cuda', use_multi_gpu=False):
         self.device = device
-        self.model = model.to(device)
+        
+        # Multi-GPU support
+        if use_multi_gpu and torch.cuda.device_count() > 1:
+            print(f"Using {torch.cuda.device_count()} GPUs for training")
+            self.model = nn.DataParallel(model)
+            self.model = self.model.to(device)
+        else:
+            self.model = model.to(device)
         
         if loss_type == 'l1':
             self.criterion = nn.L1Loss()
@@ -107,7 +114,9 @@ class HeightTrainer:
                         break
 
     def save_model(self, path):
-        torch.save(self.model.state_dict(), path)
+        # Handle DataParallel wrapper
+        model_to_save = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+        torch.save(model_to_save.state_dict(), path)
 
 
 if __name__ == '__main__':
@@ -130,8 +139,15 @@ if __name__ == '__main__':
     parser.add_argument('--logs_dir', type=str, default='logs', help='Directory to save logs')
     parser.add_argument('--results_dir', type=str, default='results/height_adapted_01', help='Directory to save results')
     parser.add_argument('--freeze_encoder', action='store_true', default=True, help='Freeze DINOv2 encoder during training (default: True). Use --no-freeze_encoder to train encoder.')
+    parser.add_argument('--multi_gpu', action='store_true', help='Use multiple GPUs for training (DataParallel)')
+    parser.add_argument('--gpu_ids', type=str, default=None, help='Comma-separated GPU IDs to use (e.g., "0,1,2,3" or "2,3")')
 
     args = parser.parse_args()
+    
+    # Set visible GPUs if specified
+    if args.gpu_ids is not None:
+        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_ids
+        print(f"Using GPUs: {args.gpu_ids}")
 
     # Create directories organized by dataset and model size
     checkpoints_dir = os.path.join(args.checkpoints_dir, args.dataset_name, args.model_size)
@@ -181,7 +197,7 @@ if __name__ == '__main__':
         logging.info(f"Using validation set with {len(val_dataset)} samples")
 
     # Create trainer
-    trainer = HeightTrainer(model, loss_type=args.loss_type, device=device)
+    trainer = HeightTrainer(model, loss_type=args.loss_type, device=device, use_multi_gpu=args.multi_gpu)
     
     # Freeze/unfreeze encoder based on --freeze_encoder flag
     if args.freeze_encoder:
