@@ -15,16 +15,28 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 class HeightTrainer:
-    def __init__(self, model, loss_type='l1', device='cuda', use_multi_gpu=False):
+    def __init__(self, model, loss_type='l1', device='cuda', use_multi_gpu=False, gpu_ids=None):
         self.device = device
+        self.multi_gpu = use_multi_gpu
+        self.model = model
         
-        # Multi-GPU support
-        if use_multi_gpu and torch.cuda.device_count() > 1:
-            print(f"Using {torch.cuda.device_count()} GPUs for training")
-            self.model = nn.DataParallel(model)
-            self.model = self.model.to(device)
+        # Parse GPU IDs
+        if gpu_ids is not None:
+            if isinstance(gpu_ids, str):
+                self.gpu_ids = [int(x) for x in gpu_ids.split(',')]
+            else:
+                self.gpu_ids = gpu_ids
         else:
-            self.model = model.to(device)
+            self.gpu_ids = list(range(torch.cuda.device_count()))
+        
+        # Multi-GPU training
+        if self.multi_gpu and torch.cuda.device_count() > 1:
+            print(f"Using {len(self.gpu_ids)} GPUs: {self.gpu_ids}")
+            # Clear GPU cache before starting
+            torch.cuda.empty_cache()
+            self.model = nn.DataParallel(self.model, device_ids=self.gpu_ids)
+        
+        self.model = self.model.to(self.device)
         
         if loss_type == 'l1':
             self.criterion = nn.L1Loss()
@@ -41,15 +53,33 @@ class HeightTrainer:
         self.patience_counter = 0
 
     def train_on_batch(self, rgb, height_gt):
+        self.optimizer.zero_grad()
+
         rgb = rgb.to(self.device)
         height_gt = height_gt.to(self.device)
-
-        self.optimizer.zero_grad()
+        
+        # Check for invalid values
+        if torch.isnan(rgb).any() or torch.isinf(rgb).any():
+            print("Warning: NaN/Inf in RGB input, skipping batch")
+            return 0.0
+        if torch.isnan(height_gt).any() or torch.isinf(height_gt).any():
+            print("Warning: NaN/Inf in height ground truth, skipping batch")
+            return 0.0
 
         with amp.autocast():
             pred_height = self.model(rgb)  # Model outputs [B, H, W]
+            
+            # Check prediction validity
+            if torch.isnan(pred_height).any() or torch.isinf(pred_height).any():
+                print("Warning: NaN/Inf in predictions, skipping batch")
+                return 0.0
 
             loss = self.criterion(pred_height.unsqueeze(1), height_gt.unsqueeze(1))  # Both [B, 1, H, W]
+            
+            # Check loss validity
+            if torch.isnan(loss) or torch.isinf(loss):
+                print("Warning: NaN/Inf loss, skipping batch")
+                return 0.0
 
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
@@ -79,6 +109,10 @@ class HeightTrainer:
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
         for epoch in tqdm(range(epochs), desc="Epochs"):
+            # Clear GPU cache at start of each epoch to prevent memory buildup
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
             total_loss = 0
             for rgb, height_gt in tqdm(dataloader, desc=f"Epoch {epoch+1}/{epochs}", leave=False):
                 loss = self.train_on_batch(rgb, height_gt)
@@ -141,6 +175,7 @@ if __name__ == '__main__':
     parser.add_argument('--freeze_encoder', action='store_true', default=True, help='Freeze DINOv2 encoder during training (default: True). Use --no-freeze_encoder to train encoder.')
     parser.add_argument('--multi_gpu', action='store_true', help='Use multiple GPUs for training (DataParallel)')
     parser.add_argument('--gpu_ids', type=str, default=None, help='Comma-separated GPU IDs to use (e.g., "0,1,2,3" or "2,3")')
+    parser.add_argument('--grad_accum_steps', type=int, default=1, help='Gradient accumulation steps to reduce memory usage')
 
     args = parser.parse_args()
     
@@ -196,8 +231,11 @@ if __name__ == '__main__':
         print(f"Using validation set with {len(val_dataset)} samples")
         logging.info(f"Using validation set with {len(val_dataset)} samples")
 
-    # Create trainer
-    trainer = HeightTrainer(model, loss_type=args.loss_type, device=device, use_multi_gpu=args.multi_gpu)
+    # Create trainer with GPU IDs
+    gpu_ids = None
+    if args.multi_gpu and args.gpu_ids:
+        gpu_ids = [int(x) for x in args.gpu_ids.split(',')]
+    trainer = HeightTrainer(model, loss_type=args.loss_type, device=device, use_multi_gpu=args.multi_gpu, gpu_ids=gpu_ids)
     
     # Freeze/unfreeze encoder based on --freeze_encoder flag
     if args.freeze_encoder:

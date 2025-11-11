@@ -39,7 +39,7 @@ class RemoteSensingHeightDataset(Dataset):
                 Resize(
                     width=518,
                     height=518,
-                    resize_target=False,
+                    resize_target=True,  # IMPORTANT: Resize DSM to match RGB size
                     keep_aspect_ratio=True,
                     ensure_multiple_of=14,
                     resize_method='lower_bound',
@@ -55,30 +55,26 @@ class RemoteSensingHeightDataset(Dataset):
         return len(self.rgb_files)
 
     def __getitem__(self, idx):
-        rgb_path = os.path.join(self.rgb_dir, self.rgb_files[idx])
-        dsm_path = os.path.join(self.dsm_dir, self.dsm_files[idx])
-
-        # Load RGB image (assuming shape H x W x 3)
-        rgb = tifffile.imread(rgb_path).astype(np.float32)
-        if rgb.ndim == 2:
-            # If grayscale, convert to RGB
-            rgb = np.stack([rgb] * 3, axis=-1)
-        elif rgb.shape[-1] == 1:
-            rgb = np.repeat(rgb, 3, axis=-1)
-
-        # Normalize RGB to [0, 1]
-        rgb = rgb / 255.0
-
-        # Load DSM (height map, shape H x W)
-        dsm = tifffile.imread(dsm_path).astype(np.float32)
-
-        # Apply transform to RGB
-        rgb_transformed = self.transform({'image': rgb})['image']  # Should be tensor C x H x W
-
-        # Resize DSM to match the transformed RGB size (518 x 518)
-        # 518 = 14 * 37, perfect multiple for ViT patches
-        dsm_resized = torch.from_numpy(dsm).unsqueeze(0).unsqueeze(0)  # 1 x 1 x H x W
-        dsm_resized = torch.nn.functional.interpolate(dsm_resized, size=(518, 518), mode='bilinear', align_corners=False)
-        dsm_resized = dsm_resized.squeeze()  # H x W
-
-        return rgb_transformed, dsm_resized
+        # Get corresponding RGB and DSM filenames
+        rgb_filename = os.path.join(self.rgb_dir, self.rgb_files[idx])
+        base_name = self.rgb_files[idx]
+        dsm_filename = os.path.join(self.dsm_dir, base_name)
+        
+        # Load RGB image
+        rgb = tifffile.imread(rgb_filename).astype(np.float32)
+        
+        # Load DSM (Digital Surface Model) as height ground truth
+        dsm = tifffile.imread(dsm_filename).astype(np.float32)
+        
+        # Check for invalid values (NaN, Inf) in DSM
+        if np.isnan(dsm).any() or np.isinf(dsm).any():
+            print(f"Warning: Invalid values in DSM {dsm_filename}")
+            dsm = np.nan_to_num(dsm, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        # Apply transform
+        if self.transform:
+            transformed = self.transform({'image': rgb, 'depth': dsm})
+            rgb = transformed['image']
+            dsm = transformed['depth']
+        
+        return rgb, dsm
