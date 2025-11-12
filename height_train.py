@@ -186,7 +186,7 @@ class HeightTrainer:
                 logging.info(f"Epoch {epoch+1}/{epochs}, Val Loss: {val_loss:.4f}")
                 
                 # Early stopping logic with minimum improvement threshold
-                min_delta = 0.01  # Minimum improvement required (1%)
+                min_delta = 0.001  # Minimum improvement required (0.1%)
                 if val_loss < (self.best_val_loss - min_delta):
                     improvement = self.best_val_loss - val_loss
                     self.best_val_loss = val_loss
