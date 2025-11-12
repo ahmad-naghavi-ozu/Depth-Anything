@@ -60,14 +60,10 @@ class HeightTrainer:
         
         # Check for invalid values
         if torch.isnan(rgb).any() or torch.isinf(rgb).any():
-            warning_msg = "Warning: NaN/Inf in RGB input, skipping batch"
-            print(warning_msg)
-            logging.warning(warning_msg)
+            logging.warning("NaN/Inf in RGB input, skipping batch")
             return 0.0
         if torch.isnan(height_gt).any() or torch.isinf(height_gt).any():
-            warning_msg = "Warning: NaN/Inf in height ground truth, skipping batch"
-            print(warning_msg)
-            logging.warning(warning_msg)
+            logging.warning("NaN/Inf in height ground truth, skipping batch")
             return 0.0
 
         with amp.autocast():
@@ -75,18 +71,14 @@ class HeightTrainer:
             
             # Check prediction validity
             if torch.isnan(pred_height).any() or torch.isinf(pred_height).any():
-                warning_msg = "Warning: NaN/Inf in predictions, skipping batch"
-                print(warning_msg)
-                logging.warning(warning_msg)
+                logging.warning("NaN/Inf in predictions, skipping batch")
                 return 0.0
 
             loss = self.criterion(pred_height.unsqueeze(1), height_gt.unsqueeze(1))  # Both [B, 1, H, W]
             
             # Check loss validity
             if torch.isnan(loss) or torch.isinf(loss):
-                warning_msg = "Warning: NaN/Inf loss, skipping batch"
-                print(warning_msg)
-                logging.warning(warning_msg)
+                logging.warning("NaN/Inf loss, skipping batch")
                 return 0.0
 
         self.scaler.scale(loss).backward()
@@ -127,13 +119,11 @@ class HeightTrainer:
                 total_loss += loss
 
             avg_loss = total_loss / len(dataloader)
-            print(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.4f}")
             logging.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.4f}")
             
             # Validation and early stopping
             if val_dataset is not None:
                 val_loss = self.validate(val_dataset, batch_size)
-                print(f"Epoch {epoch+1}/{epochs}, Val Loss: {val_loss:.4f}")
                 logging.info(f"Epoch {epoch+1}/{epochs}, Val Loss: {val_loss:.4f}")
                 
                 # Early stopping logic
@@ -143,15 +133,12 @@ class HeightTrainer:
                     if checkpoint_path:
                         best_checkpoint = checkpoint_path.replace('.pth', '_best.pth')
                         self.save_model(best_checkpoint)
-                        print(f"Best model saved to {best_checkpoint}")
-                        logging.info(f"Best model saved with val_loss: {val_loss:.4f}")
+                        logging.info(f"Best model saved to {best_checkpoint} with val_loss: {val_loss:.4f}")
                 else:
                     self.patience_counter += 1
-                    print(f"No improvement. Patience: {self.patience_counter}/{patience}")
                     logging.info(f"No improvement. Patience: {self.patience_counter}/{patience}")
                     
                     if self.patience_counter >= patience:
-                        print(f"Early stopping triggered after {epoch+1} epochs")
                         logging.info(f"Early stopping triggered after {epoch+1} epochs")
                         break
 
@@ -200,12 +187,29 @@ if __name__ == '__main__':
     os.makedirs(logs_dir, exist_ok=True)
     os.makedirs(results_dir, exist_ok=True)
 
-    # Setup logging
+    # Setup logging to both file and console
     from datetime import datetime
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f'training_{timestamp}.log'
-    logging.basicConfig(filename=os.path.join(logs_dir, log_filename), level=logging.INFO,
-                        format='%(asctime)s - %(levelname)s - %(message)s')
+    
+    # Create logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    
+    # Create formatter
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    
+    # File handler
+    file_handler = logging.FileHandler(os.path.join(logs_dir, log_filename))
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
     dataset_path = os.path.join(args.dataset_base_path, args.dataset_name)
 
@@ -213,25 +217,19 @@ if __name__ == '__main__':
 
     # Load pre-trained DepthAnything model from local checkpoint or resume from fine-tuned checkpoint
     if args.resume_from:
-        msg = f"Resuming training from: {args.resume_from}"
-        print(msg)
-        logging.info(msg)
+        logging.info(f"Resuming training from: {args.resume_from}")
         model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
         checkpoint = torch.load(args.resume_from, map_location='cpu')
         model.load_state_dict(checkpoint)
     else:
         local_checkpoint = f'checkpoints/depth_anything_{args.model_size}14.pth'
         if os.path.exists(local_checkpoint):
-            msg = f"Loading local checkpoint: {local_checkpoint}"
-            print(msg)
-            logging.info(msg)
+            logging.info(f"Loading local checkpoint: {local_checkpoint}")
             model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
             checkpoint = torch.load(local_checkpoint, map_location='cpu')
             model.load_state_dict(checkpoint)
         else:
-            msg = "Local checkpoint not found, downloading from HuggingFace"
-            print(msg)
-            logging.info(msg)
+            logging.info("Local checkpoint not found, downloading from HuggingFace")
             model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
 
     # Create datasets
@@ -239,9 +237,7 @@ if __name__ == '__main__':
     val_dataset = None
     if args.use_validation:
         val_dataset = RemoteSensingHeightDataset(dataset_path, split='valid')
-        msg = f"Using validation set with {len(val_dataset)} samples"
-        print(msg)
-        logging.info(msg)
+        logging.info(f"Using validation set with {len(val_dataset)} samples")
 
     # Create trainer with GPU IDs
     gpu_ids = None
@@ -255,14 +251,10 @@ if __name__ == '__main__':
         for name, param in model.named_parameters():
             if 'pretrained' in name:  # DINOv2 encoder parameters
                 param.requires_grad = False
-        msg = "Encoder (DINOv2) frozen - training only decoder (DPT Head)"
-        print(msg)
-        logging.info("Training mode: Decoder-only fine-tuning (encoder frozen)")
+        logging.info("Encoder (DINOv2) frozen - training only decoder (DPT Head)")
     else:
         # Train both encoder and decoder
-        msg = "Training both encoder (DINOv2) and decoder (DPT Head)"
-        print(msg)
-        logging.info("Training mode: Full fine-tuning (encoder + decoder)")
+        logging.info("Training both encoder (DINOv2) and decoder (DPT Head)")
     
     trainer.optimizer = torch.optim.Adam(
         [param for param in model.parameters() if param.requires_grad], 
@@ -282,7 +274,6 @@ if __name__ == '__main__':
     if args.multi_gpu and args.gpu_ids:
         logging.info(f"  GPU IDs: {args.gpu_ids}")
     logging.info(f"  Use validation: {args.use_validation}")
-    print(f"Starting training with model_size: {args.model_size}, loss: {args.loss_type}")
 
     # Prepare checkpoint path for early stopping
     save_path = os.path.join(checkpoints_dir, f'depth_anything_height_finetuned_{args.loss_type}_{args.model_size}.pth')
@@ -294,6 +285,4 @@ if __name__ == '__main__':
     # Save final model with _last suffix
     final_save_path = save_path.replace('.pth', '_last.pth')
     trainer.save_model(final_save_path)
-    msg = f"Final model saved to {final_save_path}"
-    print(msg)
-    logging.info(msg)
+    logging.info(f"Final model saved to {final_save_path}")

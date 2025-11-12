@@ -69,11 +69,28 @@ if __name__ == '__main__':
     os.makedirs(results_dir, exist_ok=True)
     os.makedirs(logs_dir, exist_ok=True)
 
-    # Setup logging with timestamp
+    # Setup logging to both file and console
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f'inference_{timestamp}.log'
-    logging.basicConfig(filename=os.path.join(logs_dir, log_filename), level=logging.INFO,
-                        format='%(asctime)s - %(levelname)s - %(message)s')
+    
+    # Create logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    
+    # Create formatter
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    
+    # File handler
+    file_handler = logging.FileHandler(os.path.join(logs_dir, log_filename))
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -88,9 +105,6 @@ if __name__ == '__main__':
     logging.info(f"  Split: {args.split}")
     logging.info(f"  Output size: {args.output_size}x{args.output_size}")
     logging.info(f"  Device: {device}")
-    msg = f"Loaded model from {args.checkpoint_path}"
-    print(msg)
-    logging.info(msg)
 
     # Transform
     transform = Compose([
@@ -152,9 +166,6 @@ if __name__ == '__main__':
         
         # Warning if predictions are suspiciously low
         if pred_max < 1.0 and gt_max > 5.0:
-            warning_msg = f"WARNING: Predictions very low (max={pred_max:.4f}) vs GT (max={gt_max:.4f}). Model may need more training."
-            logging.warning(warning_msg)
-            if filename == rgb_files[0]:  # Print warning once
-                print(warning_msg)
+            logging.warning(f"Predictions very low (max={pred_max:.4f}) vs GT (max={gt_max:.4f}). Model may need more training.")
 
     logging.info("Inference completed")
