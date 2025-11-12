@@ -79,7 +79,15 @@ if __name__ == '__main__':
 
     # Load model from fine-tuned checkpoint
     model = load_model(args.checkpoint_path, args.model_size).to(device).eval()
-    logging.info(f"Loaded model from {args.checkpoint_path}")
+    
+    # Log complete inference configuration
+    logging.info(f"Inference Configuration:")
+    logging.info(f"  Dataset: {args.dataset_name}")
+    logging.info(f"  Model size: {args.model_size}")
+    logging.info(f"  Checkpoint: {args.checkpoint_path}")
+    logging.info(f"  Split: {args.split}")
+    logging.info(f"  Output size: {args.output_size}x{args.output_size}")
+    logging.info(f"  Device: {device}")
     print(f"Loaded model from {args.checkpoint_path}")
 
     # Transform

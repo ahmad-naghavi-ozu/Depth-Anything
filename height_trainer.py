@@ -60,10 +60,14 @@ class HeightTrainer:
         
         # Check for invalid values
         if torch.isnan(rgb).any() or torch.isinf(rgb).any():
-            print("Warning: NaN/Inf in RGB input, skipping batch")
+            warning_msg = "Warning: NaN/Inf in RGB input, skipping batch"
+            print(warning_msg)
+            logging.warning(warning_msg)
             return 0.0
         if torch.isnan(height_gt).any() or torch.isinf(height_gt).any():
-            print("Warning: NaN/Inf in height ground truth, skipping batch")
+            warning_msg = "Warning: NaN/Inf in height ground truth, skipping batch"
+            print(warning_msg)
+            logging.warning(warning_msg)
             return 0.0
 
         with amp.autocast():
@@ -71,14 +75,18 @@ class HeightTrainer:
             
             # Check prediction validity
             if torch.isnan(pred_height).any() or torch.isinf(pred_height).any():
-                print("Warning: NaN/Inf in predictions, skipping batch")
+                warning_msg = "Warning: NaN/Inf in predictions, skipping batch"
+                print(warning_msg)
+                logging.warning(warning_msg)
                 return 0.0
 
             loss = self.criterion(pred_height.unsqueeze(1), height_gt.unsqueeze(1))  # Both [B, 1, H, W]
             
             # Check loss validity
             if torch.isnan(loss) or torch.isinf(loss):
-                print("Warning: NaN/Inf loss, skipping batch")
+                warning_msg = "Warning: NaN/Inf loss, skipping batch"
+                print(warning_msg)
+                logging.warning(warning_msg)
                 return 0.0
 
         self.scaler.scale(loss).backward()
@@ -255,7 +263,19 @@ if __name__ == '__main__':
         lr=args.lr
     )
 
-    logging.info(f"Starting training with loss: {args.loss_type}, epochs: {args.epochs}, batch_size: {args.batch_size}, lr: {args.lr}")
+    # Log complete training configuration
+    logging.info(f"Training Configuration:")
+    logging.info(f"  Dataset: {args.dataset_name}")
+    logging.info(f"  Model size: {args.model_size}")
+    logging.info(f"  Loss type: {args.loss_type}")
+    logging.info(f"  Epochs: {args.epochs}")
+    logging.info(f"  Batch size: {args.batch_size}")
+    logging.info(f"  Learning rate: {args.lr}")
+    logging.info(f"  Patience: {args.patience}")
+    logging.info(f"  Multi-GPU: {args.multi_gpu}")
+    if args.multi_gpu and args.gpu_ids:
+        logging.info(f"  GPU IDs: {args.gpu_ids}")
+    logging.info(f"  Use validation: {args.use_validation}")
     print(f"Starting training with model_size: {args.model_size}, loss: {args.loss_type}")
 
     # Prepare checkpoint path for early stopping
