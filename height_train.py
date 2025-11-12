@@ -1,6 +1,7 @@
 import torch
 import torch.cuda.amp as amp
 import torch.nn as nn
+from torch.optim.lr_scheduler import LambdaLR
 
 from depth_anything.dpt import DepthAnything
 from dataset import RemoteSensingHeightDataset
@@ -15,10 +16,15 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 class HeightTrainer:
-    def __init__(self, model, loss_type='l1', device='cuda', use_multi_gpu=False, gpu_ids=None):
+    def __init__(self, model, loss_type='l1', device='cuda', use_multi_gpu=False, gpu_ids=None, lr=3e-5, 
+                 freeze_encoder=False, weight_decay=0.05, warmup_iters=1500, total_iters=None):
         self.device = device
         self.multi_gpu = use_multi_gpu
         self.model = model
+        self.freeze_encoder = freeze_encoder
+        self.lr = lr
+        self.warmup_iters = warmup_iters
+        self.current_iter = 0
         
         # Parse GPU IDs
         if gpu_ids is not None:
@@ -47,7 +53,37 @@ class HeightTrainer:
         else:
             raise ValueError(f"Unsupported loss type: {loss_type}")
         
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
+        # Set up optimizer with differential learning rates
+        # Backbone (DINOv2): 0.1x learning rate, Decoder (DPT): 1.0x learning rate
+        model_to_optimize = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+        
+        if freeze_encoder:
+            # Only train decoder parameters
+            params = [{'params': model_to_optimize.scratch.parameters(), 'lr': lr}]
+        else:
+            # Differential learning rates: backbone gets 0.1x, decoder gets 1.0x
+            backbone_params = []
+            decoder_params = []
+            
+            for name, param in model_to_optimize.named_parameters():
+                if 'pretrained' in name or 'blocks' in name:  # DINOv2 backbone
+                    backbone_params.append(param)
+                else:  # DPT decoder head
+                    decoder_params.append(param)
+            
+            params = [
+                {'params': backbone_params, 'lr': lr * 0.1},  # 10% for backbone
+                {'params': decoder_params, 'lr': lr}  # 100% for decoder
+            ]
+        
+        # Use AdamW optimizer (better for transformers)
+        self.optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=weight_decay, 
+                                           eps=1e-8, betas=(0.9, 0.999))
+        
+        # Set up PolyLR scheduler with warmup
+        self.total_iters = total_iters  # Will be set in train()
+        self.scheduler = None  # Will be initialized in train() when total_iters is known
+        
         self.scaler = amp.GradScaler()
         self.best_val_loss = float('inf')
         self.patience_counter = 0
@@ -84,6 +120,12 @@ class HeightTrainer:
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
         self.scaler.update()
+        
+        # Update learning rate with scheduler
+        if self.scheduler is not None:
+            self.scheduler.step()
+        
+        self.current_iter += 1
 
         return loss.item()
 
@@ -107,6 +149,23 @@ class HeightTrainer:
     
     def train(self, dataset, epochs=10, batch_size=4, val_dataset=None, patience=5, checkpoint_path=None):
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        
+        # Initialize scheduler with total iterations
+        if self.scheduler is None:
+            self.total_iters = epochs * len(dataloader)
+            
+            def poly_lr_with_warmup(current_iter):
+                """PolyLR scheduler with linear warmup"""
+                if current_iter < self.warmup_iters:
+                    # Linear warmup from 1e-6 to 1.0
+                    return 1e-6 + (1.0 - 1e-6) * (current_iter / self.warmup_iters)
+                else:
+                    # PolyLR: (1 - (iter - warmup) / (total - warmup)) ^ power
+                    # power=1.0 for linear decay
+                    progress = (current_iter - self.warmup_iters) / (self.total_iters - self.warmup_iters)
+                    return max(0.0, (1.0 - progress))
+            
+            self.scheduler = LambdaLR(self.optimizer, lr_lambda=poly_lr_with_warmup)
 
         for epoch in tqdm(range(epochs), desc="Epochs"):
             # Clear GPU cache at start of each epoch to prevent memory buildup
@@ -161,7 +220,9 @@ if __name__ == '__main__':
     parser.add_argument('--loss_type', type=str, default='l1', choices=['l1', 'l2', 'smooth_l1'], help='Loss function to use')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size')
-    parser.add_argument('--lr', type=float, default=1e-5, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=3e-5, help='Learning rate (default: 3e-5, Depth Anything default)')
+    parser.add_argument('--weight_decay', type=float, default=0.05, help='Weight decay for AdamW (default: 0.05)')
+    parser.add_argument('--warmup_iters', type=int, default=1500, help='Warmup iterations for learning rate scheduler (default: 1500)')
     parser.add_argument('--use_validation', action='store_true', help='Use validation set for early stopping')
     parser.add_argument('--patience', type=int, default=5, help='Early stopping patience (epochs)')
     parser.add_argument('--resume_from', type=str, default=None, help='Path to checkpoint to resume training from')
@@ -252,27 +313,30 @@ if __name__ == '__main__':
         val_dataset = RemoteSensingHeightDataset(dataset_path, split='valid')
         logging.info(f"Using validation set with {len(val_dataset)} samples")
 
-    # Create trainer with GPU IDs
+    # Create trainer with GPU IDs and optimizer parameters
     gpu_ids = None
     if args.multi_gpu and args.gpu_ids:
         gpu_ids = [int(x) for x in args.gpu_ids.split(',')]
-    trainer = HeightTrainer(model, loss_type=args.loss_type, device=device, use_multi_gpu=args.multi_gpu, gpu_ids=gpu_ids)
     
-    # Freeze/unfreeze encoder based on --freeze_encoder flag
+    # HeightTrainer now handles optimizer setup with differential learning rates
+    trainer = HeightTrainer(
+        model, 
+        loss_type=args.loss_type, 
+        device=device, 
+        use_multi_gpu=args.multi_gpu, 
+        gpu_ids=gpu_ids,
+        lr=args.lr,
+        freeze_encoder=args.freeze_encoder,
+        weight_decay=args.weight_decay,
+        warmup_iters=args.warmup_iters
+    )
+    
+    # Log encoder training status
     if args.freeze_encoder:
-        # Freeze encoder, train only decoder (default for transfer learning)
-        for name, param in model.named_parameters():
-            if 'pretrained' in name:  # DINOv2 encoder parameters
-                param.requires_grad = False
         logging.info("Encoder (DINOv2) frozen - training only decoder (DPT Head)")
     else:
-        # Train both encoder and decoder
         logging.info("Training both encoder (DINOv2) and decoder (DPT Head)")
-    
-    trainer.optimizer = torch.optim.Adam(
-        [param for param in model.parameters() if param.requires_grad], 
-        lr=args.lr
-    )
+        logging.info("Using differential learning rates: Backbone=0.1x, Decoder=1.0x")
 
     # Log complete training configuration
     logging.info(f"Training Configuration:")
