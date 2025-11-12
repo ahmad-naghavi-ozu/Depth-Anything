@@ -126,17 +126,19 @@ class HeightTrainer:
                 val_loss = self.validate(val_dataset, batch_size)
                 logging.info(f"Epoch {epoch+1}/{epochs}, Val Loss: {val_loss:.4f}")
                 
-                # Early stopping logic
-                if val_loss < self.best_val_loss:
+                # Early stopping logic with minimum improvement threshold
+                min_delta = 0.01  # Minimum improvement required (1%)
+                if val_loss < (self.best_val_loss - min_delta):
+                    improvement = self.best_val_loss - val_loss
                     self.best_val_loss = val_loss
                     self.patience_counter = 0
                     if checkpoint_path:
                         best_checkpoint = checkpoint_path.replace('.pth', '_best.pth')
                         self.save_model(best_checkpoint)
-                        logging.info(f"Best model saved to {best_checkpoint} with val_loss: {val_loss:.4f}")
+                        logging.info(f"Best model saved to {best_checkpoint} with val_loss: {val_loss:.4f} (improvement: {improvement:.4f})")
                 else:
                     self.patience_counter += 1
-                    logging.info(f"No improvement. Patience: {self.patience_counter}/{patience}")
+                    logging.info(f"No significant improvement (min_delta={min_delta}). Patience: {self.patience_counter}/{patience}")
                     
                     if self.patience_counter >= patience:
                         logging.info(f"Early stopping triggered after {epoch+1} epochs")
