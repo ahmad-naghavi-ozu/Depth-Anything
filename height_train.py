@@ -215,17 +215,28 @@ if __name__ == '__main__':
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+    # Import DPT_DINOv2 for direct model creation
+    from depth_anything.dpt import DPT_DINOv2
+    
+    # Model architecture parameters based on encoder size
+    if args.model_size == 'vits':
+        features, out_channels = 64, [48, 96, 192, 384]
+    elif args.model_size == 'vitb':
+        features, out_channels = 128, [96, 192, 384, 768]
+    else:  # vitl
+        features, out_channels = 256, [256, 512, 1024, 1024]
+    
     # Load pre-trained DepthAnything model from local checkpoint or resume from fine-tuned checkpoint
     if args.resume_from:
         logging.info(f"Resuming training from: {args.resume_from}")
-        model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
+        model = DPT_DINOv2(encoder=args.model_size, features=features, out_channels=out_channels)
         checkpoint = torch.load(args.resume_from, map_location='cpu')
         model.load_state_dict(checkpoint)
     else:
         local_checkpoint = f'checkpoints/depth_anything_{args.model_size}14.pth'
         if os.path.exists(local_checkpoint):
             logging.info(f"Loading local checkpoint: {local_checkpoint}")
-            model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
+            model = DPT_DINOv2(encoder=args.model_size, features=features, out_channels=out_channels)
             checkpoint = torch.load(local_checkpoint, map_location='cpu')
             model.load_state_dict(checkpoint)
         else:
