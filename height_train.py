@@ -167,7 +167,7 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoints_dir', type=str, default='checkpoints', help='Directory to save checkpoints')
     parser.add_argument('--logs_dir', type=str, default='logs', help='Directory to save logs')
     parser.add_argument('--results_dir', type=str, default='results/height_adapted_01', help='Directory to save results')
-    parser.add_argument('--freeze_encoder', action='store_true', default=True, help='Freeze DINOv2 encoder during training (default: True). Use --no-freeze_encoder to train encoder.')
+    parser.add_argument('--freeze_encoder', type=lambda x: str(x).lower() == 'true', default=True, help='Freeze DINOv2 encoder during training (default: True)')
     parser.add_argument('--multi_gpu', action='store_true', help='Use multiple GPUs for training (DataParallel)')
     parser.add_argument('--gpu_ids', type=str, default=None, help='Comma-separated GPU IDs to use (e.g., "0,1,2,3" or "2,3")')
     parser.add_argument('--grad_accum_steps', type=int, default=1, help='Gradient accumulation steps to reduce memory usage')
