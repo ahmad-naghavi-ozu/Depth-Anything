@@ -62,6 +62,7 @@ if __name__ == '__main__':
     parser.add_argument('--results_dir', type=str, default='results/height_adapted_01', help='Base results directory')
     parser.add_argument('--logs_dir', type=str, default='logs', help='Base logs directory')
     parser.add_argument('--save_visualizations', action='store_true', default=False, help='Save PNG visualizations of predictions')
+    parser.add_argument('--eval_only', action='store_true', default=False, help='Evaluate existing predictions without running inference')
 
     args = parser.parse_args()
 
@@ -96,26 +97,33 @@ if __name__ == '__main__':
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # Load model from fine-tuned checkpoint
-    model = load_model(args.checkpoint_path, args.model_size).to(device).eval()
+    # Load model and transform only if not in eval-only mode
+    model = None
+    transform = None
     
-    # Log complete inference configuration
-    logging.info(f"Inference Configuration:")
+    if not args.eval_only:
+        if not args.checkpoint_path:
+            raise ValueError("--checkpoint_path is required when not using --eval_only mode")
+        model = load_model(args.checkpoint_path, args.model_size).to(device).eval()
+        transform = Compose([
+            Resize(width=518, height=518, resize_target=False, keep_aspect_ratio=True,
+                   ensure_multiple_of=14, resize_method='lower_bound', image_interpolation_method=cv2.INTER_CUBIC),
+            NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            PrepareForNet(),
+        ])
+    
+    # Log complete configuration
+    mode = "Evaluation" if args.eval_only else "Inference"
+    logging.info(f"{mode} Configuration:")
+    logging.info(f"  Mode: {mode}")
     logging.info(f"  Dataset: {args.dataset_name}")
     logging.info(f"  Model size: {args.model_size}")
-    logging.info(f"  Checkpoint: {args.checkpoint_path}")
+    if not args.eval_only:
+        logging.info(f"  Checkpoint: {args.checkpoint_path}")
+        logging.info(f"  Device: {device}")
+        logging.info(f"  Save visualizations: {args.save_visualizations}")
     logging.info(f"  Split: {args.split}")
     logging.info(f"  Output size: {args.output_size}x{args.output_size}")
-    logging.info(f"  Device: {device}")
-    logging.info(f"  Save visualizations: {args.save_visualizations}")
-
-    # Transform
-    transform = Compose([
-        Resize(width=518, height=518, resize_target=False, keep_aspect_ratio=True,
-               ensure_multiple_of=14, resize_method='lower_bound', image_interpolation_method=cv2.INTER_CUBIC),
-        NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        PrepareForNet(),
-    ])
 
     # Dataset paths
     rgb_dir = os.path.join(args.dataset_base_path, args.dataset_name, args.split, 'rgb')
@@ -126,7 +134,8 @@ if __name__ == '__main__':
 
     rgb_files = sorted([f for f in os.listdir(rgb_dir) if f.endswith('.tif')])
 
-    logging.info(f"Starting inference on {len(rgb_files)} images")
+    mode_text = "evaluation" if args.eval_only else "inference"
+    logging.info(f"Starting {mode_text} on {len(rgb_files)} images")
 
     # Initialize metric accumulators
     total_mse = 0.0
@@ -149,12 +158,40 @@ if __name__ == '__main__':
     low_rise_max = 15.0
     mid_rise_max = 40.0
 
-    for filename in tqdm(rgb_files, desc="Inferring"):
+    desc_text = "Evaluating" if args.eval_only else "Inferring"
+    for filename in tqdm(rgb_files, desc=desc_text):
         rgb_path = os.path.join(rgb_dir, filename)
         dsm_path = os.path.join(dsm_dir, filename)
 
-        # Infer height with specified output size (512x512)
-        pred_height, raw_image = infer_height(model, rgb_path, transform, device, output_size=args.output_size)
+        if args.eval_only:
+            # Load existing prediction
+            pred_filename = filename.replace('.tif', '_pred_height.npy')
+            pred_path = os.path.join(results_dir, pred_filename)
+            if not os.path.exists(pred_path):
+                logging.warning(f"Prediction file not found: {pred_path}, skipping {filename}")
+                continue
+            pred_height = np.load(pred_path)
+        else:
+            # Infer height with specified output size (512x512)
+            pred_height, raw_image = infer_height(model, rgb_path, transform, device, output_size=args.output_size)
+            
+            # Save prediction
+            pred_filename = filename.replace('.tif', '_pred_height.npy')
+            np.save(os.path.join(results_dir, pred_filename), pred_height)
+
+            # Save visualization if requested (handle near-zero predictions)
+            if args.save_visualizations:
+                pred_range = pred_height.max() - pred_height.min()
+                if pred_range > 1e-6:  # Avoid division by zero
+                    pred_norm = (pred_height - pred_height.min()) / pred_range * 255
+                else:
+                    # If predictions are all nearly the same, just visualize as is
+                    pred_norm = np.clip(pred_height * 10, 0, 255)  # Scale up small values
+                pred_norm = pred_norm.astype(np.uint8)
+                pred_color = cv2.applyColorMap(pred_norm, cv2.COLORMAP_INFERNO)
+
+                vis_filename = filename.replace('.tif', '_height_vis.png')
+                cv2.imwrite(os.path.join(results_dir, vis_filename), pred_color)
 
         # Load ground truth and resize to match prediction size
         gt_height = tifffile.imread(dsm_path).astype(np.float32)
@@ -162,24 +199,6 @@ if __name__ == '__main__':
             gt_height_tensor = torch.from_numpy(gt_height).unsqueeze(0).unsqueeze(0)
             gt_height_tensor = F.interpolate(gt_height_tensor, size=(args.output_size, args.output_size), mode='bilinear', align_corners=False)
             gt_height = gt_height_tensor.squeeze().numpy()
-
-        # Save prediction
-        pred_filename = filename.replace('.tif', '_pred_height.npy')
-        np.save(os.path.join(results_dir, pred_filename), pred_height)
-
-        # Save visualization if requested (handle near-zero predictions)
-        if args.save_visualizations:
-            pred_range = pred_height.max() - pred_height.min()
-            if pred_range > 1e-6:  # Avoid division by zero
-                pred_norm = (pred_height - pred_height.min()) / pred_range * 255
-            else:
-                # If predictions are all nearly the same, just visualize as is
-                pred_norm = np.clip(pred_height * 10, 0, 255)  # Scale up small values
-            pred_norm = pred_norm.astype(np.uint8)
-            pred_color = cv2.applyColorMap(pred_norm, cv2.COLORMAP_INFERNO)
-
-            vis_filename = filename.replace('.tif', '_height_vis.png')
-            cv2.imwrite(os.path.join(results_dir, vis_filename), pred_color)
 
         # Create building mask (buildings have height > 1m)
         gt_mask = (gt_height > 1.0).astype(np.uint8)
@@ -261,4 +280,5 @@ if __name__ == '__main__':
     logging.info(f"Average RMSE (mid-rise, {low_rise_max}-{mid_rise_max}m): {avg_rmse_mid_rise:.4f} (samples: {count_mid_rise})")
     logging.info(f"Average RMSE (high-rise, >{mid_rise_max}m): {avg_rmse_high_rise:.4f} (samples: {count_high_rise})")
     logging.info("="*60)
-    logging.info("Inference completed")
+    completion_text = "Evaluation" if args.eval_only else "Inference"
+    logging.info(f"{completion_text} completed")
