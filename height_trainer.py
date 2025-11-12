@@ -213,31 +213,35 @@ if __name__ == '__main__':
 
     # Load pre-trained DepthAnything model from local checkpoint or resume from fine-tuned checkpoint
     if args.resume_from:
-        print(f"Resuming training from: {args.resume_from}")
+        msg = f"Resuming training from: {args.resume_from}"
+        print(msg)
+        logging.info(msg)
         model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
         checkpoint = torch.load(args.resume_from, map_location='cpu')
         model.load_state_dict(checkpoint)
-        logging.info(f"Resumed training from checkpoint: {args.resume_from}")
     else:
         local_checkpoint = f'checkpoints/depth_anything_{args.model_size}14.pth'
         if os.path.exists(local_checkpoint):
-            print(f"Loading local checkpoint: {local_checkpoint}")
+            msg = f"Loading local checkpoint: {local_checkpoint}"
+            print(msg)
+            logging.info(msg)
             model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
             checkpoint = torch.load(local_checkpoint, map_location='cpu')
             model.load_state_dict(checkpoint)
-            logging.info(f"Loaded local checkpoint: {local_checkpoint}")
         else:
-            print(f"Local checkpoint not found, downloading from HuggingFace")
+            msg = "Local checkpoint not found, downloading from HuggingFace"
+            print(msg)
+            logging.info(msg)
             model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{args.model_size}14')
-            logging.info(f"Downloaded model from HuggingFace")
 
     # Create datasets
     dataset = RemoteSensingHeightDataset(dataset_path, split='train')
     val_dataset = None
     if args.use_validation:
         val_dataset = RemoteSensingHeightDataset(dataset_path, split='valid')
-        print(f"Using validation set with {len(val_dataset)} samples")
-        logging.info(f"Using validation set with {len(val_dataset)} samples")
+        msg = f"Using validation set with {len(val_dataset)} samples"
+        print(msg)
+        logging.info(msg)
 
     # Create trainer with GPU IDs
     gpu_ids = None
@@ -251,11 +255,13 @@ if __name__ == '__main__':
         for name, param in model.named_parameters():
             if 'pretrained' in name:  # DINOv2 encoder parameters
                 param.requires_grad = False
-        print("Encoder (DINOv2) frozen - training only decoder (DPT Head)")
+        msg = "Encoder (DINOv2) frozen - training only decoder (DPT Head)"
+        print(msg)
         logging.info("Training mode: Decoder-only fine-tuning (encoder frozen)")
     else:
         # Train both encoder and decoder
-        print("Training both encoder (DINOv2) and decoder (DPT Head)")
+        msg = "Training both encoder (DINOv2) and decoder (DPT Head)"
+        print(msg)
         logging.info("Training mode: Full fine-tuning (encoder + decoder)")
     
     trainer.optimizer = torch.optim.Adam(
@@ -288,5 +294,6 @@ if __name__ == '__main__':
     # Save final model with _last suffix
     final_save_path = save_path.replace('.pth', '_last.pth')
     trainer.save_model(final_save_path)
-    logging.info(f"Final model saved to {final_save_path}")
-    print(f"Final model saved to {final_save_path}")
+    msg = f"Final model saved to {final_save_path}"
+    print(msg)
+    logging.info(msg)

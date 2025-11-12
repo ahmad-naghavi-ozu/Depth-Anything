@@ -88,7 +88,9 @@ if __name__ == '__main__':
     logging.info(f"  Split: {args.split}")
     logging.info(f"  Output size: {args.output_size}x{args.output_size}")
     logging.info(f"  Device: {device}")
-    print(f"Loaded model from {args.checkpoint_path}")
+    msg = f"Loaded model from {args.checkpoint_path}"
+    print(msg)
+    logging.info(msg)
 
     # Transform
     transform = Compose([
