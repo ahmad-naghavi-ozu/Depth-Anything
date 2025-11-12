@@ -203,6 +203,22 @@ if __name__ == '__main__':
         # Create building mask (buildings have height > 1m)
         gt_mask = (gt_height > 1.0).astype(np.uint8)
         
+        # Store previous totals to compute per-sample metrics
+        prev_mse = total_mse
+        prev_mae = total_mae
+        prev_rmse = total_rmse
+        prev_r2 = total_r2
+        prev_delta1 = total_delta1
+        prev_delta2 = total_delta2
+        prev_delta3 = total_delta3
+        prev_rmse_building = total_rmse_building
+        prev_rmse_low_rise = total_rmse_low_rise
+        prev_rmse_mid_rise = total_rmse_mid_rise
+        prev_rmse_high_rise = total_rmse_high_rise
+        prev_count_low_rise = count_low_rise
+        prev_count_mid_rise = count_mid_rise
+        prev_count_high_rise = count_high_rise
+        
         # Compute per-sample metrics using the utility function
         (
             total_delta1,
@@ -247,6 +263,36 @@ if __name__ == '__main__':
             low_rise_max=low_rise_max,
             mid_rise_max=mid_rise_max
         )
+        
+        # Log per-sample metrics
+        sample_mse = total_mse - prev_mse
+        sample_mae = total_mae - prev_mae
+        sample_rmse = total_rmse - prev_rmse
+        sample_r2 = total_r2 - prev_r2
+        sample_delta1 = total_delta1 - prev_delta1
+        sample_delta2 = total_delta2 - prev_delta2
+        sample_delta3 = total_delta3 - prev_delta3
+        sample_rmse_building = total_rmse_building - prev_rmse_building
+        
+        # Calculate per-sample height category RMSE
+        sample_rmse_low = total_rmse_low_rise - prev_rmse_low_rise if count_low_rise > prev_count_low_rise else 0.0
+        sample_rmse_mid = total_rmse_mid_rise - prev_rmse_mid_rise if count_mid_rise > prev_count_mid_rise else 0.0
+        sample_rmse_high = total_rmse_high_rise - prev_rmse_high_rise if count_high_rise > prev_count_high_rise else 0.0
+        
+        # Build log message with available metrics
+        log_msg = (f"{filename}: MSE={sample_mse:.4f}, MAE={sample_mae:.4f}, RMSE={sample_rmse:.4f}, "
+                  f"R²={sample_r2:.4f}, δ1={sample_delta1:.4f}, δ2={sample_delta2:.4f}, δ3={sample_delta3:.4f}, "
+                  f"RMSE_building={sample_rmse_building:.4f}")
+        
+        # Add height category RMSE if applicable
+        if count_low_rise > prev_count_low_rise:
+            log_msg += f", RMSE_low_rise={sample_rmse_low:.4f}"
+        if count_mid_rise > prev_count_mid_rise:
+            log_msg += f", RMSE_mid_rise={sample_rmse_mid:.4f}"
+        if count_high_rise > prev_count_high_rise:
+            log_msg += f", RMSE_high_rise={sample_rmse_high:.4f}"
+        
+        logging.info(log_msg)
 
     # Compute average metrics
     num_samples = len(rgb_files)
