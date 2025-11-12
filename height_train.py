@@ -186,7 +186,7 @@ class HeightTrainer:
                 logging.info(f"Epoch {epoch+1}/{epochs}, Val Loss: {val_loss:.4f}")
                 
                 # Early stopping logic with minimum improvement threshold
-                min_delta = 0.001  # Minimum improvement required (0.1%)
+                min_delta = 0.001  # Minimum improvement required (0.001 absolute improvement)
                 if val_loss < (self.best_val_loss - min_delta):
                     improvement = self.best_val_loss - val_loss
                     self.best_val_loss = val_loss
@@ -220,17 +220,17 @@ if __name__ == '__main__':
     parser.add_argument('--loss_type', type=str, default='l1', choices=['l1', 'l2', 'smooth_l1'], help='Loss function to use')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size')
-    parser.add_argument('--lr', type=float, default=3e-5, help='Learning rate (default: 3e-5, Depth Anything default)')
+    parser.add_argument('--lr', type=float, default=5e-5, help='Learning rate (default: 5e-5, optimized for height estimation)')
     parser.add_argument('--weight_decay', type=float, default=0.05, help='Weight decay for AdamW (default: 0.05)')
     parser.add_argument('--warmup_iters', type=int, default=1500, help='Warmup iterations for learning rate scheduler (default: 1500)')
     parser.add_argument('--use_validation', action='store_true', help='Use validation set for early stopping')
-    parser.add_argument('--patience', type=int, default=5, help='Early stopping patience (epochs)')
+    parser.add_argument('--patience', type=int, default=10, help='Early stopping patience (epochs)')
     parser.add_argument('--resume_from', type=str, default=None, help='Path to checkpoint to resume training from')
     parser.add_argument('--model_size', type=str, default='vits', choices=['vits', 'vitb', 'vitl'], help='Model size (ViT variant)')
     parser.add_argument('--checkpoints_dir', type=str, default='checkpoints', help='Directory to save checkpoints')
     parser.add_argument('--logs_dir', type=str, default='logs', help='Directory to save logs')
     parser.add_argument('--results_dir', type=str, default='results/height_adapted_01', help='Directory to save results')
-    parser.add_argument('--freeze_encoder', type=lambda x: str(x).lower() == 'true', default=True, help='Freeze DINOv2 encoder during training (default: True)')
+    parser.add_argument('--freeze_encoder', type=lambda x: str(x).lower() == 'true', default=False, help='Freeze DINOv2 encoder during training (default: False, uses differential LR: backbone=0.1x, decoder=1.0x)')
     parser.add_argument('--multi_gpu', action='store_true', help='Use multiple GPUs for training (DataParallel)')
     parser.add_argument('--gpu_ids', type=str, default=None, help='Comma-separated GPU IDs to use (e.g., "0,1,2,3" or "2,3")')
     parser.add_argument('--grad_accum_steps', type=int, default=1, help='Gradient accumulation steps to reduce memory usage')
