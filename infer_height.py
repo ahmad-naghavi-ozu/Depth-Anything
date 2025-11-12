@@ -18,6 +18,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 from depth_anything.dpt import DepthAnything
 from depth_anything.util.transform import Resize, NormalizeImage, PrepareForNet
+from metrics_utils import compute_dsm_metrics
 
 
 def load_model(checkpoint_path, model_size='vits'):
@@ -60,6 +61,7 @@ if __name__ == '__main__':
     parser.add_argument('--output_size', type=int, default=512, help='Output height map size (e.g., 512 for 512x512)')
     parser.add_argument('--results_dir', type=str, default='results/height_adapted_01', help='Base results directory')
     parser.add_argument('--logs_dir', type=str, default='logs', help='Base logs directory')
+    parser.add_argument('--save_visualizations', action='store_true', default=False, help='Save PNG visualizations of predictions')
 
     args = parser.parse_args()
 
@@ -105,6 +107,7 @@ if __name__ == '__main__':
     logging.info(f"  Split: {args.split}")
     logging.info(f"  Output size: {args.output_size}x{args.output_size}")
     logging.info(f"  Device: {device}")
+    logging.info(f"  Save visualizations: {args.save_visualizations}")
 
     # Transform
     transform = Compose([
@@ -125,6 +128,27 @@ if __name__ == '__main__':
 
     logging.info(f"Starting inference on {len(rgb_files)} images")
 
+    # Initialize metric accumulators
+    total_mse = 0.0
+    total_mae = 0.0
+    total_rmse = 0.0
+    total_r2 = 0.0
+    total_delta1 = 0.0
+    total_delta2 = 0.0
+    total_delta3 = 0.0
+    total_rmse_building = 0.0
+    total_rmse_matched = 0.0
+    total_rmse_low_rise = 0.0
+    total_rmse_mid_rise = 0.0
+    total_rmse_high_rise = 0.0
+    count_low_rise = 0
+    count_mid_rise = 0
+    count_high_rise = 0
+    
+    # Height category thresholds (in meters)
+    low_rise_max = 15.0
+    mid_rise_max = 40.0
+
     for filename in tqdm(rgb_files, desc="Inferring"):
         rgb_path = os.path.join(rgb_dir, filename)
         dsm_path = os.path.join(dsm_dir, filename)
@@ -143,29 +167,98 @@ if __name__ == '__main__':
         pred_filename = filename.replace('.tif', '_pred_height.npy')
         np.save(os.path.join(results_dir, pred_filename), pred_height)
 
-        # Save visualization (handle near-zero predictions)
-        pred_range = pred_height.max() - pred_height.min()
-        if pred_range > 1e-6:  # Avoid division by zero
-            pred_norm = (pred_height - pred_height.min()) / pred_range * 255
-        else:
-            # If predictions are all nearly the same, just visualize as is
-            pred_norm = np.clip(pred_height * 10, 0, 255)  # Scale up small values
-        pred_norm = pred_norm.astype(np.uint8)
-        pred_color = cv2.applyColorMap(pred_norm, cv2.COLORMAP_INFERNO)
+        # Save visualization if requested (handle near-zero predictions)
+        if args.save_visualizations:
+            pred_range = pred_height.max() - pred_height.min()
+            if pred_range > 1e-6:  # Avoid division by zero
+                pred_norm = (pred_height - pred_height.min()) / pred_range * 255
+            else:
+                # If predictions are all nearly the same, just visualize as is
+                pred_norm = np.clip(pred_height * 10, 0, 255)  # Scale up small values
+            pred_norm = pred_norm.astype(np.uint8)
+            pred_color = cv2.applyColorMap(pred_norm, cv2.COLORMAP_INFERNO)
 
-        vis_filename = filename.replace('.tif', '_height_vis.png')
-        cv2.imwrite(os.path.join(results_dir, vis_filename), pred_color)
+            vis_filename = filename.replace('.tif', '_height_vis.png')
+            cv2.imwrite(os.path.join(results_dir, vis_filename), pred_color)
 
-        # Log metrics and check for potential issues
-        mse = np.mean((pred_height - gt_height) ** 2)
-        mae = np.mean(np.abs(pred_height - gt_height))
-        pred_max = pred_height.max()
-        gt_max = gt_height.max()
+        # Create building mask (buildings have height > 1m)
+        gt_mask = (gt_height > 1.0).astype(np.uint8)
         
-        logging.info(f"{filename}: MSE={mse:.4f}, MAE={mae:.4f}, Pred_max={pred_max:.4f}, GT_max={gt_max:.4f}")
-        
-        # Warning if predictions are suspiciously low
-        if pred_max < 1.0 and gt_max > 5.0:
-            logging.warning(f"Predictions very low (max={pred_max:.4f}) vs GT (max={gt_max:.4f}). Model may need more training.")
+        # Compute per-sample metrics using the utility function
+        (
+            total_delta1,
+            total_delta2,
+            total_delta3,
+            total_mse,
+            total_mae,
+            total_rmse,
+            total_rmse_building,
+            total_rmse_matched,
+            total_rmse_high_rise,
+            total_rmse_mid_rise,
+            total_rmse_low_rise,
+            count_high_rise,
+            count_mid_rise,
+            count_low_rise,
+            total_r2,
+            _,
+            _
+        ) = compute_dsm_metrics(
+            verbose=False,
+            logger=logging,
+            total_delta1=total_delta1,
+            total_delta2=total_delta2,
+            total_delta3=total_delta3,
+            total_mse=total_mse,
+            total_mae=total_mae,
+            total_rmse=total_rmse,
+            total_rmse_building=total_rmse_building,
+            total_rmse_matched=total_rmse_matched,
+            total_high_rise_rmse=total_rmse_high_rise,
+            total_mid_rise_rmse=total_rmse_mid_rise,
+            total_low_rise_rmse=total_rmse_low_rise,
+            count_high_rise=count_high_rise,
+            count_mid_rise=count_mid_rise,
+            count_low_rise=count_low_rise,
+            dsm_tile=gt_height,
+            dsm_pred=pred_height,
+            gt_mask=gt_mask,
+            pred_mask=None,
+            total_r2=total_r2,
+            low_rise_max=low_rise_max,
+            mid_rise_max=mid_rise_max
+        )
 
+    # Compute average metrics
+    num_samples = len(rgb_files)
+    avg_mse = total_mse / num_samples
+    avg_mae = total_mae / num_samples
+    avg_rmse = total_rmse / num_samples
+    avg_r2 = total_r2 / num_samples
+    avg_delta1 = total_delta1 / num_samples
+    avg_delta2 = total_delta2 / num_samples
+    avg_delta3 = total_delta3 / num_samples
+    avg_rmse_building = total_rmse_building / num_samples
+    
+    avg_rmse_low_rise = total_rmse_low_rise / count_low_rise if count_low_rise > 0 else 0.0
+    avg_rmse_mid_rise = total_rmse_mid_rise / count_mid_rise if count_mid_rise > 0 else 0.0
+    avg_rmse_high_rise = total_rmse_high_rise / count_high_rise if count_high_rise > 0 else 0.0
+    
+    # Report final averaged metrics
+    logging.info("\n" + "="*60)
+    logging.info("FINAL AVERAGED METRICS")
+    logging.info("="*60)
+    logging.info(f"Number of samples: {num_samples}")
+    logging.info(f"Average MSE:       {avg_mse:.4f}")
+    logging.info(f"Average MAE:       {avg_mae:.4f}")
+    logging.info(f"Average RMSE:      {avg_rmse:.4f}")
+    logging.info(f"Average R²:        {avg_r2:.4f}")
+    logging.info(f"Average Delta1:    {avg_delta1:.4f}")
+    logging.info(f"Average Delta2:    {avg_delta2:.4f}")
+    logging.info(f"Average Delta3:    {avg_delta3:.4f}")
+    logging.info(f"Average RMSE (buildings): {avg_rmse_building:.4f}")
+    logging.info(f"Average RMSE (low-rise, <{low_rise_max}m): {avg_rmse_low_rise:.4f} (samples: {count_low_rise})")
+    logging.info(f"Average RMSE (mid-rise, {low_rise_max}-{mid_rise_max}m): {avg_rmse_mid_rise:.4f} (samples: {count_mid_rise})")
+    logging.info(f"Average RMSE (high-rise, >{mid_rise_max}m): {avg_rmse_high_rise:.4f} (samples: {count_high_rise})")
+    logging.info("="*60)
     logging.info("Inference completed")
