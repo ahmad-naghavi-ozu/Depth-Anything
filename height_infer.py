@@ -16,13 +16,22 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-from depth_anything.dpt import DepthAnything
+from depth_anything.dpt import DepthAnything, DPT_DINOv2
 from depth_anything.util.transform import Resize, NormalizeImage, PrepareForNet
 from metrics_utils import compute_dsm_metrics
 
 
 def load_model(checkpoint_path, model_size='vits'):
-    model = DepthAnything.from_pretrained(f'LiheYoung/depth_anything_{model_size}14')
+    # Model architecture parameters based on encoder size (must match training)
+    if model_size == 'vits':
+        features, out_channels = 64, [48, 96, 192, 384]
+    elif model_size == 'vitb':
+        features, out_channels = 128, [96, 192, 384, 768]
+    else:  # vitl
+        features, out_channels = 256, [256, 512, 1024, 1024]
+    
+    # Create model with same architecture as training
+    model = DPT_DINOv2(encoder=model_size, features=features, out_channels=out_channels)
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
     model.load_state_dict(checkpoint)
     return model
