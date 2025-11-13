@@ -21,7 +21,7 @@ from depth_anything.util.transform import Resize, NormalizeImage, PrepareForNet
 from metrics_utils import compute_dsm_metrics
 
 
-def load_model(checkpoint_path, model_size='vits'):
+def load_model(checkpoint_path, model_size='vits', use_final_relu=False):
     # Model architecture parameters based on encoder size (must match training)
     if model_size == 'vits':
         features, out_channels = 64, [48, 96, 192, 384]
@@ -30,8 +30,8 @@ def load_model(checkpoint_path, model_size='vits'):
     else:  # vitl
         features, out_channels = 256, [256, 512, 1024, 1024]
     
-    # Create model with same architecture as training
-    model = DPT_DINOv2(encoder=model_size, features=features, out_channels=out_channels)
+    # Create model with same architecture as training (including final ReLU setting)
+    model = DPT_DINOv2(encoder=model_size, features=features, out_channels=out_channels, use_final_relu=use_final_relu)
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
     model.load_state_dict(checkpoint)
     return model
@@ -71,6 +71,7 @@ if __name__ == '__main__':
     parser.add_argument('--results_dir', type=str, default='results/height_adapted_01', help='Base results directory')
     parser.add_argument('--logs_dir', type=str, default='logs', help='Base logs directory')
     parser.add_argument('--save_visualizations', action='store_true', default=False, help='Save PNG visualizations of predictions')
+    parser.add_argument('--use_final_relu', action='store_true', default=False, help='Use final ReLU activation (must match training setting; default: False)')
     parser.add_argument('--eval_only', action='store_true', default=False, help='Evaluate existing predictions without running inference')
 
     args = parser.parse_args()
@@ -113,7 +114,7 @@ if __name__ == '__main__':
     if not args.eval_only:
         if not args.checkpoint_path:
             raise ValueError("--checkpoint_path is required when not using --eval_only mode")
-        model = load_model(args.checkpoint_path, args.model_size).to(device).eval()
+        model = load_model(args.checkpoint_path, args.model_size, use_final_relu=args.use_final_relu).to(device).eval()
         transform = Compose([
             Resize(width=518, height=518, resize_target=False, keep_aspect_ratio=True,
                    ensure_multiple_of=14, resize_method='lower_bound', image_interpolation_method=cv2.INTER_CUBIC),
@@ -130,6 +131,7 @@ if __name__ == '__main__':
     if not args.eval_only:
         logging.info(f"  Checkpoint: {args.checkpoint_path}")
         logging.info(f"  Device: {device}")
+        logging.info(f"  Final ReLU: {args.use_final_relu}")
         logging.info(f"  Save visualizations: {args.save_visualizations}")
     logging.info(f"  Split: {args.split}")
     logging.info(f"  Output size: {args.output_size}x{args.output_size}")

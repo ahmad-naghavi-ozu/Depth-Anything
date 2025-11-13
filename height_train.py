@@ -231,6 +231,7 @@ if __name__ == '__main__':
     parser.add_argument('--logs_dir', type=str, default='logs', help='Directory to save logs')
     parser.add_argument('--results_dir', type=str, default='results/height_adapted_01', help='Directory to save results')
     parser.add_argument('--freeze_encoder', type=lambda x: str(x).lower() == 'true', default=False, help='Freeze DINOv2 encoder during training (default: False, uses differential LR: backbone=0.1x, decoder=1.0x)')
+    parser.add_argument('--use_final_relu', action='store_true', default=False, help='Use final ReLU activation (clamps outputs to [0, inf); default: False for unbounded regression)')
     parser.add_argument('--multi_gpu', action='store_true', help='Use multiple GPUs for training (DataParallel)')
     parser.add_argument('--gpu_ids', type=str, default=None, help='Comma-separated GPU IDs to use (e.g., "0,1,2,3" or "2,3")')
     parser.add_argument('--grad_accum_steps', type=int, default=1, help='Gradient accumulation steps to reduce memory usage')
@@ -292,14 +293,14 @@ if __name__ == '__main__':
     # Load pre-trained DepthAnything model from local checkpoint or resume from fine-tuned checkpoint
     if args.resume_from:
         logging.info(f"Resuming training from: {args.resume_from}")
-        model = DPT_DINOv2(encoder=args.model_size, features=features, out_channels=out_channels)
+        model = DPT_DINOv2(encoder=args.model_size, features=features, out_channels=out_channels, use_final_relu=args.use_final_relu)
         checkpoint = torch.load(args.resume_from, map_location='cpu')
         model.load_state_dict(checkpoint)
     else:
         local_checkpoint = f'checkpoints/depth_anything_{args.model_size}14.pth'
         if os.path.exists(local_checkpoint):
             logging.info(f"Loading local checkpoint: {local_checkpoint}")
-            model = DPT_DINOv2(encoder=args.model_size, features=features, out_channels=out_channels)
+            model = DPT_DINOv2(encoder=args.model_size, features=features, out_channels=out_channels, use_final_relu=args.use_final_relu)
             checkpoint = torch.load(local_checkpoint, map_location='cpu')
             model.load_state_dict(checkpoint)
         else:
@@ -337,6 +338,9 @@ if __name__ == '__main__':
     else:
         logging.info("Training both encoder (DINOv2) and decoder (DPT Head)")
         logging.info("Using differential learning rates: Backbone=0.1x, Decoder=1.0x")
+    
+    # Log final ReLU status
+    logging.info(f"Final ReLU activation: {'enabled' if args.use_final_relu else 'disabled (unbounded regression)'}")
 
     # Log complete training configuration
     logging.info(f"Training Configuration:")
