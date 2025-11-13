@@ -9,17 +9,21 @@ import cv2
 
 
 class RemoteSensingHeightDataset(Dataset):
-    def __init__(self, root_dir, split='train', transform=None):
+    def __init__(self, root_dir, split='train', transform=None, dsm_mean=None, dsm_std=None):
         """
         Args:
             root_dir (str): Path to the dataset root, e.g., 'DFC2023S'
             split (str): 'train', 'valid', or 'test'
             transform: Optional transform to apply to the data
+            dsm_mean: Mean for DSM normalization (computed from training set)
+            dsm_std: Std for DSM normalization (computed from training set)
         """
         self.root_dir = root_dir
         self.split = split
         self.rgb_dir = os.path.join(root_dir, split, 'rgb')
         self.dsm_dir = os.path.join(root_dir, split, 'dsm')
+        self.dsm_mean = dsm_mean
+        self.dsm_std = dsm_std
 
         if not os.path.exists(self.rgb_dir):
             raise ValueError(f"RGB directory {self.rgb_dir} does not exist")
@@ -70,6 +74,10 @@ class RemoteSensingHeightDataset(Dataset):
         if np.isnan(dsm).any() or np.isinf(dsm).any():
             print(f"Warning: Invalid values in DSM {dsm_filename}")
             dsm = np.nan_to_num(dsm, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        # Apply DSM normalization if stats provided
+        if self.dsm_mean is not None and self.dsm_std is not None:
+            dsm = (dsm - self.dsm_mean) / self.dsm_std
         
         # Apply transform
         if self.transform:

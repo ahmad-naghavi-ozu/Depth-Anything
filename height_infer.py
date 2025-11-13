@@ -107,6 +107,18 @@ if __name__ == '__main__':
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+    # Load DSM stats for denormalization
+    stats_path = os.path.join(args.results_dir, args.dataset_name, args.model_size, 'dsm_stats.npy')
+    if os.path.exists(stats_path):
+        stats = np.load(stats_path, allow_pickle=True).item()
+        dsm_mean = stats['mean']
+        dsm_std = stats['std']
+        logging.info(f"Loaded DSM stats - Mean: {dsm_mean:.4f}, Std: {dsm_std:.4f}")
+    else:
+        logging.warning(f"DSM stats file not found at {stats_path}, assuming no normalization was used")
+        dsm_mean = 0.0
+        dsm_std = 1.0
+
     # Load model and transform only if not in eval-only mode
     model = None
     transform = None
@@ -185,6 +197,9 @@ if __name__ == '__main__':
         else:
             # Infer height with specified output size (512x512)
             pred_height, raw_image = infer_height(model, rgb_path, transform, device, output_size=args.output_size)
+            
+            # Denormalize predictions back to original scale
+            pred_height = pred_height * dsm_std + dsm_mean
             
             # Save prediction
             pred_filename = filename.replace('.tif', '_pred_height.npy')

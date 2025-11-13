@@ -9,11 +9,29 @@ from torch.utils.data import DataLoader
 import os
 from tqdm import tqdm
 import warnings
+import numpy as np
 
 # Suppress warnings from deep learning libraries
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+
+def compute_dsm_stats(dataset):
+    """Compute mean and std of DSM values from training dataset"""
+    all_dsm_values = []
+    
+    logging.info("Computing DSM statistics from training set...")
+    for rgb, dsm in tqdm(dataset, desc="Computing DSM stats"):
+        # dsm is already resized and processed, flatten to get all values
+        all_dsm_values.append(dsm.flatten())
+    
+    all_dsm_values = np.concatenate(all_dsm_values)
+    dsm_mean = float(np.mean(all_dsm_values))
+    dsm_std = float(np.std(all_dsm_values))
+    
+    logging.info(f"DSM stats - Mean: {dsm_mean:.4f}, Std: {dsm_std:.4f}")
+    return dsm_mean, dsm_std
 
 class HeightTrainer:
     def __init__(self, model, loss_type='l1', device='cuda', use_multi_gpu=False, gpu_ids=None, lr=3e-5, 
@@ -309,9 +327,18 @@ if __name__ == '__main__':
 
     # Create datasets
     dataset = RemoteSensingHeightDataset(dataset_path, split='train')
+    dsm_mean, dsm_std = compute_dsm_stats(dataset)
+    
+    # Save DSM stats for inference
+    stats_path = os.path.join(checkpoints_dir, 'dsm_stats.npy')
+    np.save(stats_path, {'mean': dsm_mean, 'std': dsm_std})
+    logging.info(f"DSM stats saved to {stats_path}")
+    
+    # Recreate datasets with normalization
+    dataset = RemoteSensingHeightDataset(dataset_path, split='train', dsm_mean=dsm_mean, dsm_std=dsm_std)
     val_dataset = None
     if args.use_validation:
-        val_dataset = RemoteSensingHeightDataset(dataset_path, split='valid')
+        val_dataset = RemoteSensingHeightDataset(dataset_path, split='valid', dsm_mean=dsm_mean, dsm_std=dsm_std)
         logging.info(f"Using validation set with {len(val_dataset)} samples")
 
     # Create trainer with GPU IDs and optimizer parameters
