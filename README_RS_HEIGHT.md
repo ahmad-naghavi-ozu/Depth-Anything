@@ -68,10 +68,23 @@ python train_rs_height.py \
     --distributed True
 ```
 
-**Notes:**
-- Checkpoints saved to: `./checkpoints/rs_height_zoedepth/`
-- WandB logs: Project `MonoDepth3-dfc2023s`
-- Training logs: `./wandb/`
+**Training with Log Files:**
+```bash
+# Create log file with timestamp
+python train_rs_height.py \
+    --model zoedepth \
+    --dataset dfc2023s \
+    --midas_model_type dinov2_base \
+    --bs 12 \
+    --epochs 5 \
+    --distributed True \
+    2>&1 | tee ./logs/rs_height_zoedepth/training_$(date +%Y%m%d_%H%M%S).log
+```
+
+**Output Locations:**
+- Checkpoints: `./checkpoints/rs_height_zoedepth/`
+- Terminal Logs: `./logs/rs_height_zoedepth/`
+- WandB Logs: `./wandb/` (local) + online project `MonoDepth3-dfc2023s`
 - Model: ViT-B (97.78M params) recommended for 11GB GPUs
 - Multi-GPU: Batch size 12 = 3 per GPU × 4 GPUs
 - Single GPU: Batch size 4 for ViT-B
@@ -90,9 +103,10 @@ python infer_rs_height.py \
 
 **Output Structure:**
 ```
-./checkpoints/rs_height_zoedepth/    # Model checkpoints
+./checkpoints/rs_height_zoedepth/    # Model checkpoints (best_model.pth, latest.pth)
+./logs/rs_height_zoedepth/           # Terminal output logs (training_*.log)
 ./results/rs_height_zoedepth/        # Inference results (predicted DSMs)
-./wandb/                              # Training logs and metrics
+./wandb/                              # WandB local logs and metrics
 ```
 
 ## Implementation Details
