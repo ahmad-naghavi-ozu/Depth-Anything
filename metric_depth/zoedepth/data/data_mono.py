@@ -41,6 +41,7 @@ from torchvision import transforms
 from zoedepth.utils.config import change_dataset
 
 from .ddad import get_ddad_loader
+from .dfc2023s import get_dfc2023s_loader
 from .diml_indoor_test import get_diml_indoor_loader
 from .diml_outdoor_test import get_diml_outdoor_loader
 from .diode import get_diode_loader
@@ -123,6 +124,16 @@ class DepthDataLoader(object):
         if config.dataset == 'ddad':
             self.data = get_ddad_loader(config.ddad_root, resize_shape=(
                 352, 1216), batch_size=1, num_workers=1)
+            return
+
+        if config.dataset == 'dfc2023s':
+            self.data = get_dfc2023s_loader(
+                data_dir_root=config.dfc2023s_root,
+                split='valid' if mode == 'online_eval' else 'train',
+                batch_size=config.batch_size if mode == 'train' else 1,
+                resize_shape=None,  # Let model's PrepForMidas handle resize
+                num_workers=config.workers if mode == 'train' else 1
+            )
             return
 
         img_size = self.config.get("img_size", None)

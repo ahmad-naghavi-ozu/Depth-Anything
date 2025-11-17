@@ -336,10 +336,37 @@ class DepthAnythingCore(nn.Module):
             kwargs = DepthAnythingCore.parse_img_size(kwargs)
         img_size = kwargs.pop("img_size", [384, 384])
         
-        depth_anything = DPT_DINOv2(out_channels=[256, 512, 1024, 1024], use_clstoken=False)
+        # Map midas_model_type to encoder size and checkpoint
+        encoder_map = {
+            'dinov2_small': ('vits', 'depth_anything_vits14.pth'),
+            'dinov2_base': ('vitb', 'depth_anything_vitb14.pth'),
+            'dinov2_large': ('vitl', 'depth_anything_vitl14.pth'),
+        }
         
-        state_dict = torch.load('./checkpoints/depth_anything_vitl14.pth', map_location='cpu')
-        depth_anything.load_state_dict(state_dict)
+        encoder_type, checkpoint_name = encoder_map.get(midas_model_type, ('vitl', 'depth_anything_vitl14.pth'))
+        
+        # Build DPT model with correct encoder
+        depth_anything = DPT_DINOv2(encoder=encoder_type, out_channels=[256, 512, 1024, 1024], use_clstoken=False)
+        
+        # Load pretrained weights from local checkpoint
+        if use_pretrained_midas:
+            import os
+            checkpoint_path = os.path.join('./checkpoints', checkpoint_name)
+            if not os.path.exists(checkpoint_path):
+                # Try absolute path
+                import pathlib
+                repo_root = pathlib.Path(__file__).resolve().parents[4]
+                checkpoint_path = repo_root / 'checkpoints' / checkpoint_name
+            
+            if os.path.exists(checkpoint_path):
+                print(f"Loading pretrained weights from {checkpoint_path}")
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', category=FutureWarning)
+                    state_dict = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+                depth_anything.load_state_dict(state_dict)
+            else:
+                print(f"Warning: Checkpoint not found at {checkpoint_path}, using random initialization")
         
         kwargs.update({'keep_aspect_ratio': force_keep_ar})
         

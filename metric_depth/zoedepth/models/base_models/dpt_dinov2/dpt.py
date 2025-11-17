@@ -137,7 +137,13 @@ class DPT_DINOv2(nn.Module):
 
         torch.manual_seed(1)
         
-        self.pretrained = torch.hub.load('../torchhub/facebookresearch_dinov2_main', 'dinov2_{:}14'.format(encoder), source='local', pretrained=False)
+        # Get absolute path to torchhub directory
+        import pathlib
+        current_file = pathlib.Path(__file__).resolve()
+        repo_root = current_file.parents[5]  # Go up to Depth_Anything root
+        torchhub_path = repo_root / 'torchhub' / 'facebookresearch_dinov2_main'
+        
+        self.pretrained = torch.hub.load(str(torchhub_path), 'dinov2_{:}14'.format(encoder), source='local', pretrained=False)
         
         dim = self.pretrained.blocks[0].attn.qkv.in_features
         

@@ -227,10 +227,26 @@ DATASETS_CONFIG = {
         "min_depth": 1e-3,
         "max_depth": 80,
     },
+    "dfc2023s": {
+        "dataset": "dfc2023s",
+        "dfc2023s_root": "/home/asfand/Ahmad/datasets/DFC2023S",
+        "min_depth": 0.0,
+        "max_depth": 150.0,  # Round up from 147.45
+        "min_depth_eval": 0.0,
+        "max_depth_eval": 150.0,
+        "input_height": 512,
+        "input_width": 512,
+        "do_random_rotate": False,
+        "degree": 0.0,
+        "do_kb_crop": False,
+        "garg_crop": False,
+        "eigen_crop": False,
+    },
 }
 
 ALL_INDOOR = ["nyu", "ibims", "sunrgbd", "diode_indoor", "hypersim_test"]
 ALL_OUTDOOR = ["kitti", "diml_outdoor", "diode_outdoor",  "vkitti2", "ddad"]
+ALL_REMOTE_SENSING = ["dfc2023s"]
 ALL_EVAL_DATASETS = ALL_INDOOR + ALL_OUTDOOR
 
 COMMON_TRAINING_CONFIG = {
@@ -375,7 +391,7 @@ def get_config(model_name, mode='train', dataset=None, **overwrite_kwargs):
     check_choices("Model", model_name, ["zoedepth", "zoedepth_nk"])
     check_choices("Mode", mode, ["train", "infer", "eval"])
     if mode == "train":
-        check_choices("Dataset", dataset, ["nyu", "kitti", "mix", None])
+        check_choices("Dataset", dataset, ["nyu", "kitti", "mix", "dfc2023s", None])
 
     config = flatten({**COMMON_CONFIG, **COMMON_TRAINING_CONFIG})
     config = update_model_config(config, mode, model_name)
