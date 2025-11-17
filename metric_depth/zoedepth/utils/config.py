@@ -230,6 +230,7 @@ DATASETS_CONFIG = {
     "dfc2023s": {
         "dataset": "dfc2023s",
         "dfc2023s_root": "/home/asfand/Ahmad/datasets/DFC2023S",
+        "save_dir": os.path.expanduser("./checkpoints/rs_height_zoedepth"),
         "min_depth": 0.0,
         "max_depth": 150.0,  # Round up from 147.45
         "min_depth_eval": 0.0,

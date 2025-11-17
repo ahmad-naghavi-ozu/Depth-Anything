@@ -47,39 +47,34 @@ conda activate depth_anything_rs
 
 ## Training
 
-### Basic Training Command
+### Basic Training Command (Single GPU)
 ```bash
 python train_rs_height.py \
     --model zoedepth \
     --dataset dfc2023s \
-    --batch_size 16 \
+    --bs 4 \
     --epochs 5 \
-    --lr 0.000161 \
-    --save_dir ./checkpoints/rs_height_zoedepth
+    --distributed False
 ```
 
-### Training with Custom Parameters
+### Multi-GPU Training (Recommended)
 ```bash
 python train_rs_height.py \
     --model zoedepth \
     --dataset dfc2023s \
-    --batch_size 8 \
-    --epochs 10 \
-    --lr 0.0001 \
-    --workers 8 \
-    --save_dir ./checkpoints/rs_height_custom \
-    --notes "Custom LR experiment"
+    --midas_model_type dinov2_base \
+    --bs 12 \
+    --epochs 5 \
+    --distributed True
 ```
 
-### Distributed Training (Multi-GPU)
-```bash
-python train_rs_height.py \
-    --model zoedepth \
-    --dataset dfc2023s \
-    --batch_size 32 \
-    --distributed \
-    --workers 16
-```
+**Notes:**
+- Checkpoints saved to: `./checkpoints/rs_height_zoedepth/`
+- WandB logs: Project `MonoDepth3-dfc2023s`
+- Training logs: `./wandb/`
+- Model: ViT-B (97.78M params) recommended for 11GB GPUs
+- Multi-GPU: Batch size 12 = 3 per GPU × 4 GPUs
+- Single GPU: Batch size 4 for ViT-B
 
 ## Inference
 
@@ -93,12 +88,11 @@ python infer_rs_height.py \
     --save-predictions
 ```
 
-### Evaluate on Validation Set
-```bash
-python infer_rs_height.py \
-    --checkpoint ./checkpoints/rs_height_zoedepth/best_model.pth \
-    --split val \
-    --output-dir ./results/rs_height_val
+**Output Structure:**
+```
+./checkpoints/rs_height_zoedepth/    # Model checkpoints
+./results/rs_height_zoedepth/        # Inference results (predicted DSMs)
+./wandb/                              # Training logs and metrics
 ```
 
 ## Implementation Details
