@@ -52,7 +52,7 @@ conda activate depth_anything_rs
 python train_rs_height.py \
     --model zoedepth \
     --dataset dfc2023s \
-    --bs 4 \
+    --bs 2 \
     --epochs 5 \
     --distributed False
 ```
@@ -63,7 +63,7 @@ python train_rs_height.py \
     --model zoedepth \
     --dataset dfc2023s \
     --midas_model_type dinov2_base \
-    --bs 12 \
+    --bs 8 \
     --epochs 5 \
     --distributed True
 ```
@@ -75,19 +75,25 @@ python train_rs_height.py \
     --model zoedepth \
     --dataset dfc2023s \
     --midas_model_type dinov2_base \
-    --bs 12 \
+    --bs 8 \
     --epochs 5 \
     --distributed True \
     2>&1 | tee ./logs/rs_height_zoedepth/training_$(date +%Y%m%d_%H%M%S).log
 ```
 
+**Training Configuration:**
+- **Encoder Finetuning**: DINOv2 backbone is finetuned with 10x lower LR (better adaptation to RS imagery)
+- **Batch Size**: 8 total (2 per GPU × 4 GPUs) - reduced due to encoder gradient computation
+- **Learning Rate**: 0.000161 for metric head, 0.0000161 for encoder (10x factor)
+- **Epochs**: 5 (sufficient with pre-trained DepthAnything weights)
+- **Model**: ViT-B (97.78M params) for 11GB GPUs
+
 **Output Locations:**
 - Checkpoints: `./checkpoints/rs_height_zoedepth/`
 - Terminal Logs: `./logs/rs_height_zoedepth/`
 - WandB Logs: `./wandb/` (local) + online project `MonoDepth3-dfc2023s`
-- Model: ViT-B (97.78M params) recommended for 11GB GPUs
-- Multi-GPU: Batch size 12 = 3 per GPU × 4 GPUs
-- Single GPU: Batch size 4 for ViT-B
+
+**Note**: Encoder finetuning (`train_midas=true`) is enabled by default for DFC2023S dataset via `config_zoedepth_dfc2023s.json`. This allows the DINOv2 backbone to adapt to remote sensing imagery characteristics.
 
 ## Inference
 

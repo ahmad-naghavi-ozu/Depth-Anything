@@ -36,7 +36,7 @@ ROOT = pathlib.Path(__file__).parent.parent.resolve()
 HOME_DIR = os.path.expanduser("./data")
 
 COMMON_CONFIG = {
-    "save_dir": os.path.expanduser("./depth_anything_finetune"),
+    "save_dir": os.path.expanduser("./checkpoints"),
     "project": "ZoeDepth",
     "tags": '',
     "notes": "",
@@ -397,8 +397,14 @@ def get_config(model_name, mode='train', dataset=None, **overwrite_kwargs):
     config = flatten({**COMMON_CONFIG, **COMMON_TRAINING_CONFIG})
     config = update_model_config(config, mode, model_name)
 
+    # update with dataset-specific model config if available
+    if dataset is not None:
+        dataset_config = get_model_config(model_name, dataset)
+        if dataset_config is not None:
+            config = {**config, **flatten({**dataset_config.model, **dataset_config[mode]})}
+
     # update with model version specific config
-    version_name = overwrite_kwargs.get("version_name", config["version_name"])
+    version_name = overwrite_kwargs.get("version_name", config.get("version_name", "v1"))
     config = update_model_config(config, mode, model_name, version_name)
 
     # update with config version if specified
