@@ -327,8 +327,14 @@ class DepthAnythingCore(nn.Module):
     def __del__(self):
         self.remove_hooks()
 
-    def set_output_channels(self):
-        self.output_channels = [256, 256, 256, 256, 256]
+    def set_output_channels(self, encoder_type='vitl'):
+        # Set output channels based on encoder type for ZoeDepth compatibility
+        channel_map = {
+            'vits': [64, 64, 64, 64, 64],
+            'vitb': [128, 128, 128, 128, 128],
+            'vitl': [256, 256, 256, 256, 256],
+        }
+        self.output_channels = channel_map.get(encoder_type, [256, 256, 256, 256, 256])
 
     @staticmethod
     def build(midas_model_type="dinov2_large", train_midas=False, use_pretrained_midas=True, fetch_features=False, freeze_bn=True, force_keep_ar=False, force_reload=False, **kwargs):
@@ -343,10 +349,19 @@ class DepthAnythingCore(nn.Module):
             'dinov2_large': ('vitl', 'depth_anything_vitl14.pth'),
         }
         
-        encoder_type, checkpoint_name = encoder_map.get(midas_model_type, ('vitl', 'depth_anything_vitl14.pth'))
+        # Architecture parameters based on encoder size
+        arch_params = {
+            'vits': {'features': 64, 'out_channels': [48, 96, 192, 384]},
+            'vitb': {'features': 128, 'out_channels': [96, 192, 384, 768]},
+            'vitl': {'features': 256, 'out_channels': [256, 512, 1024, 1024]},
+        }
         
-        # Build DPT model with correct encoder
-        depth_anything = DPT_DINOv2(encoder=encoder_type, out_channels=[256, 512, 1024, 1024], use_clstoken=False)
+        encoder_type, checkpoint_name = encoder_map.get(midas_model_type, ('vitl', 'depth_anything_vitl14.pth'))
+        params = arch_params[encoder_type]
+        
+        # Build DPT model with correct encoder and architecture parameters
+        depth_anything = DPT_DINOv2(encoder=encoder_type, features=params['features'], 
+                                   out_channels=params['out_channels'], use_clstoken=False)
         
         # Load pretrained weights from local checkpoint
         if use_pretrained_midas:
@@ -373,7 +388,7 @@ class DepthAnythingCore(nn.Module):
         depth_anything_core = DepthAnythingCore(depth_anything, trainable=train_midas, fetch_features=fetch_features,
                                freeze_bn=freeze_bn, img_size=img_size, **kwargs)
         
-        depth_anything_core.set_output_channels()
+        depth_anything_core.set_output_channels(encoder_type=encoder_type)
         return depth_anything_core
 
     @staticmethod
