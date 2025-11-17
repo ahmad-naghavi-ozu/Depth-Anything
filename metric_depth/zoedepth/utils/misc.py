@@ -241,6 +241,10 @@ def compute_metrics(gt, pred, interpolate=True, garg_crop=False, eigen_crop=True
                 eval_mask[45:471, 41:601] = 1
         else:
             eval_mask = np.ones(valid_mask.shape)
+    else:
+        # No cropping - use full valid mask
+        eval_mask = np.ones(valid_mask.shape)
+    
     valid_mask = np.logical_and(valid_mask, eval_mask)
     return compute_errors(gt_depth[valid_mask], pred[valid_mask])
 
