@@ -57,7 +57,6 @@ def compute_dsm_metrics(
     total_mae,
     total_rmse,
     total_rmse_building,
-    total_rmse_matched,
     total_high_rise_rmse,
     total_mid_rise_rmse,
     total_low_rise_rmse,
@@ -85,7 +84,6 @@ def compute_dsm_metrics(
         total_mae (float): Running total for Mean Absolute Error 
         total_rmse (float): Running total for Root Mean Squared Error
         total_rmse_building (float): Running total for RMSE on building pixels only
-        total_rmse_matched (float): Running total for RMSE on matched building pixels
         total_high_rise_rmse (float): Running total for RMSE on high-rise buildings
         total_mid_rise_rmse (float): Running total for RMSE on mid-rise buildings
         total_low_rise_rmse (float): Running total for RMSE on low-rise buildings
@@ -141,7 +139,6 @@ def compute_dsm_metrics(
 
     # Compute building-specific height metrics
     tile_rmse_building = 0.0
-    tile_rmse_matched = 0.0
     tile_high_rise_rmse = None
     tile_mid_rise_rmse = None
     tile_low_rise_rmse = None
@@ -160,20 +157,6 @@ def compute_dsm_metrics(
                 dsm_pred_buildings = dsm_pred_[building_mask_gt]
                 dsm_tile_buildings = dsm_tile_[building_mask_gt]
                 tile_rmse_building = np.sqrt(np.mean((dsm_pred_buildings - dsm_tile_buildings) ** 2))
-            
-            # Calculate RMSE for matched building pixels (only if pred_mask is available)
-            if pred_mask is not None:
-                if pred_mask.shape != dsm_pred.shape[:2]:
-                    if verbose:
-                        logger.warning(f"Pred mask shape mismatch: pred_mask {pred_mask.shape}, DSM shape {dsm_pred.shape[:2]}")
-                else:
-                    building_mask_pred = (pred_mask == 1).flatten()
-                    matched_building_mask = building_mask_gt & building_mask_pred
-                    
-                    if np.sum(matched_building_mask) > 0:
-                        dsm_pred_matched = dsm_pred_[matched_building_mask]
-                        dsm_tile_matched = dsm_tile_[matched_building_mask]
-                        tile_rmse_matched = np.sqrt(np.mean((dsm_pred_matched - dsm_tile_matched) ** 2))
             
             # Calculate height-category-specific RMSE based on GT building heights
             # Combine building mask with height thresholds
@@ -202,25 +185,22 @@ def compute_dsm_metrics(
                 tile_high_rise_rmse = np.sqrt(np.mean((high_rise_pred - high_rise_gt) ** 2))
                 count_high_rise += 1
 
-    # Log tile-level metrics if verbose
-    if verbose:
-        logger.info(f"Tile MSE   : {tile_mse:.4f}")
-        logger.info(f"Tile MAE   : {tile_mae:.4f}")
-        logger.info(f"Tile RMSE  : {tile_rmse:.4f}")
-        logger.info(f"Tile R^2    : {tile_r2:.4f}")
-        logger.info(f"Tile Delta1: {tile_delta1:.4f}")
-        logger.info(f"Tile Delta2: {tile_delta2:.4f}")
-        logger.info(f"Tile Delta3: {tile_delta3:.4f}")
-        if gt_mask is not None:
-            logger.info(f"Tile RMSE Building: {tile_rmse_building:.4f}")
-            if pred_mask is not None:
-                logger.info(f"Tile RMSE Matched : {tile_rmse_matched:.4f}")
-            if tile_low_rise_rmse is not None:
-                logger.info(f"Tile Low-rise RMSE: {tile_low_rise_rmse:.4f}")
-            if tile_mid_rise_rmse is not None:
-                logger.info(f"Tile Mid-rise RMSE: {tile_mid_rise_rmse:.4f}")
-            if tile_high_rise_rmse is not None:
-                logger.info(f"Tile High-rise RMSE: {tile_high_rise_rmse:.4f}")
+        if verbose:
+            logger.info(f"Tile MSE   : {tile_mse:.4f}")
+            logger.info(f"Tile MAE   : {tile_mae:.4f}")
+            logger.info(f"Tile RMSE  : {tile_rmse:.4f}")
+            logger.info(f"Tile R^2    : {tile_r2:.4f}")
+            logger.info(f"Tile Delta1: {tile_delta1:.4f}")
+            logger.info(f"Tile Delta2: {tile_delta2:.4f}")
+            logger.info(f"Tile Delta3: {tile_delta3:.4f}")
+            if gt_mask is not None:
+                logger.info(f"Tile RMSE Building: {tile_rmse_building:.4f}")
+                if tile_low_rise_rmse is not None:
+                    logger.info(f"Tile Low-rise RMSE: {tile_low_rise_rmse:.4f}")
+                if tile_mid_rise_rmse is not None:
+                    logger.info(f"Tile Mid-rise RMSE: {tile_mid_rise_rmse:.4f}")
+                if tile_high_rise_rmse is not None:
+                    logger.info(f"Tile High-rise RMSE: {tile_high_rise_rmse:.4f}")
 
     # Update running totals
     total_mse  += tile_mse
@@ -234,7 +214,6 @@ def compute_dsm_metrics(
     
     # Update building-specific totals
     total_rmse_building += tile_rmse_building
-    total_rmse_matched += tile_rmse_matched
     
     if tile_high_rise_rmse is not None:
         total_high_rise_rmse += tile_high_rise_rmse
@@ -252,7 +231,6 @@ def compute_dsm_metrics(
         total_mae,
         total_rmse,
         total_rmse_building,
-        total_rmse_matched,
         total_high_rise_rmse,
         total_mid_rise_rmse,
         total_low_rise_rmse,
