@@ -161,7 +161,6 @@ weights/
 *.safetensors
 
 # Datasets (commonly large)
-data/
 datasets/
 *.zip
 *.tar
