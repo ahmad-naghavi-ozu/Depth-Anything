@@ -176,6 +176,7 @@ def compute_errors(gt, pred):
             'sq_rel': Squared relative error
             'rmse_log': Root mean squared error on the log scale
             'silog': Scale invariant log error
+            'mae': Mean absolute error (L1 error)
     """
     thresh = np.maximum((gt / pred), (pred / gt))
     a1 = (thresh < 1.25).mean()
@@ -195,8 +196,11 @@ def compute_errors(gt, pred):
     silog = np.sqrt(np.mean(err ** 2) - np.mean(err) ** 2) * 100
 
     log_10 = (np.abs(np.log10(gt) - np.log10(pred))).mean()
+    
+    mae = np.mean(np.abs(gt - pred))  # Mean Absolute Error (L1 error)
+    
     return dict(a1=a1, a2=a2, a3=a3, abs_rel=abs_rel, rmse=rmse, log_10=log_10, rmse_log=rmse_log,
-                silog=silog, sq_rel=sq_rel)
+                silog=silog, sq_rel=sq_rel, mae=mae)
 
 
 def compute_metrics(gt, pred, interpolate=True, garg_crop=False, eigen_crop=True, dataset='nyu', min_depth_eval=0.1, max_depth_eval=10, **kwargs):

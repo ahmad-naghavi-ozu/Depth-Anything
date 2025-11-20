@@ -50,7 +50,8 @@ class BaseTrainer:
         """ Base Trainer class for training a model."""
         
         self.config = config
-        self.metric_criterion = "abs_rel"
+        # Metric criterion for checkpoint selection: 'rmse', 'abs_rel', or 'mae' (L1 error)
+        self.metric_criterion = config.get('metric_criterion', 'rmse')
         if device is None:
             device = torch.device(
                 'cuda') if torch.cuda.is_available() else torch.device('cpu')
