@@ -445,7 +445,7 @@ def get_config(model_name, mode='train', dataset=None, **overwrite_kwargs):
 
     if dataset is not None:
         config['dataset'] = dataset
-        config = {**DATASETS_CONFIG[dataset], **config}
+        config = {**config, **DATASETS_CONFIG[dataset]}
         
 
     config['model'] = model_name
