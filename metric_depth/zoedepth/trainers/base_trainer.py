@@ -60,6 +60,9 @@ class BaseTrainer:
         self.test_loader = test_loader
         self.optimizer = self.init_optimizer()
         self.scheduler = self.init_scheduler()
+        
+        # Load checkpoint AFTER optimizer/scheduler initialization for proper resume
+        self.load_ckpt()
 
     def resize_to_target(self, prediction, target):
         if prediction.shape[2:] != target.shape[-2:]:
@@ -85,11 +88,17 @@ class BaseTrainer:
             checkpoint = matches[0]
         else:
             return
-        checkpoint_data = torch.load(checkpoint, map_location=self.device)
+        # Handle device properly for distributed training (can be int GPU ID or torch.device)
+        if isinstance(self.device, int):
+            map_loc = f'cuda:{self.device}'
+        else:
+            map_loc = self.device
+        checkpoint_data = torch.load(checkpoint, map_location=map_loc)
         model = load_wts(self.model, checkpoint)
         
         # Load optimizer state if available and resume is requested
-        if self.config.resume and 'optimizer' in checkpoint_data and checkpoint_data['optimizer'] is not None:
+        resume_flag = self.config.get('resume', False)
+        if resume_flag and 'optimizer' in checkpoint_data and checkpoint_data['optimizer'] is not None:
             try:
                 self.optimizer.load_state_dict(checkpoint_data['optimizer'])
                 print(f"Loaded optimizer state from {checkpoint}")
@@ -97,7 +106,7 @@ class BaseTrainer:
                 print(f"Warning: Could not load optimizer state: {e}")
         
         # Load scheduler state if available and resume is requested
-        if self.config.resume and 'scheduler' in checkpoint_data and checkpoint_data['scheduler'] is not None:
+        if resume_flag and 'scheduler' in checkpoint_data and checkpoint_data['scheduler'] is not None:
             try:
                 self.scheduler.load_state_dict(checkpoint_data['scheduler'])
                 print(f"Loaded scheduler state from {checkpoint}")
@@ -105,14 +114,19 @@ class BaseTrainer:
                 print(f"Warning: Could not load scheduler state: {e}")
         
         # Load training state
-        if self.config.resume and 'epoch' in checkpoint_data:
+        resume_flag = self.config.get('resume', False)
+        if resume_flag and 'epoch' in checkpoint_data:
             self.start_epoch = checkpoint_data.get('epoch', 0) + 1
             self.step = checkpoint_data.get('step', 0)
             self.best_loss = checkpoint_data.get('best_loss', np.inf)
             self.epochs_without_improvement = checkpoint_data.get('epochs_without_improvement', 0)
-            print(f"Resuming from epoch {self.start_epoch}, step {self.step}, best_loss {self.best_loss:.4f}")
+            print(f"✓ Resuming training from epoch {self.start_epoch}, step {self.step}, best_loss {self.best_loss:.4f}")
+            print(f"✓ Patience counter: {self.epochs_without_improvement}/10")
         else:
-            print(f"Loaded weights from {checkpoint} (weights only, no training state)")
+            if not resume_flag:
+                print(f"Loaded weights from {checkpoint} (weights only, no resume flag)")
+            else:
+                print(f"Loaded weights from {checkpoint} (no training state in checkpoint)")
         
         self.model = model
 
@@ -358,9 +372,17 @@ class BaseTrainer:
         scalar_field = {k: colorize(
             v, vmin=None, vmax=None, cmap=scalar_cmap) for k, v in scalar_field.items()}
         images = {**rgb, **depth, **scalar_field}
-        wimages = {
-            prefix+"Predictions": [wandb.Image(v, caption=k) for k, v in images.items()]}
-        wandb.log(wimages, step=self.step)
+        
+        # Suppress image size mismatch warnings from wandb
+        import logging
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', message='Images sizes do not match')
+            logging.getLogger('root').setLevel(logging.ERROR)
+            wimages = {
+                prefix+"Predictions": [wandb.Image(v, caption=k) for k, v in images.items()]}
+            wandb.log(wimages, step=self.step)
+            logging.getLogger('root').setLevel(logging.WARNING)
 
     def log_line_plot(self, data):
         if not self.should_log:

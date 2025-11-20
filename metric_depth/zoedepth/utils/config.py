@@ -457,7 +457,7 @@ def get_config(model_name, mode='train', dataset=None, **overwrite_kwargs):
         if dataset == "mix":
             dataset = 'nyu'  # Use nyu as default for mix. Dataset config is changed accordingly while loading the dataloader
         if dataset is not None:
-            config['project'] = f"MonoDepth3-{orig_dataset}"  # Set project for wandb
+            config['project'] = f"DepthAnything-RSHeight-{orig_dataset}"  # Set project for wandb
 
     if dataset is not None:
         config['dataset'] = dataset
