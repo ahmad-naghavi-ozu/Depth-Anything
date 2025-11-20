@@ -4,6 +4,10 @@ def infer_type(x):  # hacky way to infer type from string args
     if not isinstance(x, str):
         return x
 
+    # Handle boolean strings
+    if x.lower() in ('true', 'false'):
+        return x.lower() == 'true'
+
     try:
         x = int(x)
         return x

@@ -77,7 +77,11 @@ class BaseTrainer:
 
         from zoedepth.models.model_io import load_wts
 
-        if hasattr(self.config, "checkpoint"):
+        # Check for resume flag first (highest priority)
+        resume_path = self.config.get('resume', None)
+        if resume_path and resume_path is not False:
+            checkpoint = resume_path
+        elif hasattr(self.config, "checkpoint"):
             checkpoint = self.config.checkpoint
         elif hasattr(self.config, "ckpt_pattern"):
             pattern = self.config.ckpt_pattern
@@ -117,6 +121,7 @@ class BaseTrainer:
         resume_flag = self.config.get('resume', False)
         if resume_flag and 'epoch' in checkpoint_data:
             self.start_epoch = checkpoint_data.get('epoch', 0) + 1
+            self.epoch = checkpoint_data.get('epoch', 0)  # Initialize epoch for save_checkpoint
             self.step = checkpoint_data.get('step', 0)
             self.best_loss = checkpoint_data.get('best_loss', np.inf)
             self.epochs_without_improvement = checkpoint_data.get('epochs_without_improvement', 0)
