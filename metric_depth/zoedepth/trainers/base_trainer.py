@@ -52,6 +52,8 @@ class BaseTrainer:
         self.config = config
         # Metric criterion for checkpoint selection: 'rmse', 'abs_rel', or 'mae' (L1 error)
         self.metric_criterion = config.get('metric_criterion', 'rmse')
+        # Minimum improvement delta for early stopping (default: 0.0)
+        self.min_delta = config.get('min_delta', 0.0)
         if device is None:
             device = torch.device(
                 'cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -280,13 +282,15 @@ class BaseTrainer:
 
                             # Check for improvement in validation metric
                             current_loss = metrics[self.metric_criterion]
-                            if (current_loss < best_loss) and self.should_write:
+                            # Consider improvement only if it exceeds min_delta threshold
+                            improvement = best_loss - current_loss
+                            if (improvement > self.min_delta) and self.should_write:
                                 self.save_checkpoint(
                                     f"{self.config.experiment_id}_best.pt")
                                 best_loss = current_loss
                                 self.best_loss = best_loss
                                 self.epochs_without_improvement = 0
-                                print(f"New best validation {self.metric_criterion}: {best_loss:.4f}")
+                                print(f"New best validation {self.metric_criterion}: {best_loss:.4f} (improvement: {improvement:.4f})")
                             else:
                                 self.epochs_without_improvement += 1
                                 if self.config.get('early_stop_patience', 0) > 0:
@@ -317,7 +321,9 @@ class BaseTrainer:
                           v in metrics.items()}, step=self.step)
 
                 current_loss = metrics[self.metric_criterion]
-                if (current_loss < best_loss) and self.should_write:
+                # Consider improvement only if it exceeds min_delta threshold
+                improvement = best_loss - current_loss
+                if (improvement > self.min_delta) and self.should_write:
                     self.save_checkpoint(
                         f"{self.config.experiment_id}_best.pt")
                     best_loss = current_loss
