@@ -243,11 +243,27 @@ DATASETS_CONFIG = {
         "garg_crop": False,
         "eigen_crop": False,
     },
+    "dfc2023mini": {
+        "dataset": "dfc2023mini",
+        "dfc2023mini_root": "/home/asfand/Ahmad/datasets/DFC2023mini",
+        "save_dir": os.path.expanduser("./checkpoints/rs_height_zoedepth/DFC2023mini"),
+        "min_depth": 0.0,
+        "max_depth": 150.0,
+        "min_depth_eval": 0.0,
+        "max_depth_eval": 150.0,
+        "input_height": 512,
+        "input_width": 512,
+        "do_random_rotate": False,
+        "degree": 0.0,
+        "do_kb_crop": False,
+        "garg_crop": False,
+        "eigen_crop": False,
+    },
 }
 
 ALL_INDOOR = ["nyu", "ibims", "sunrgbd", "diode_indoor", "hypersim_test"]
 ALL_OUTDOOR = ["kitti", "diml_outdoor", "diode_outdoor",  "vkitti2", "ddad"]
-ALL_REMOTE_SENSING = ["dfc2023s"]
+ALL_REMOTE_SENSING = ["dfc2023s", "dfc2023mini"]
 ALL_EVAL_DATASETS = ALL_INDOOR + ALL_OUTDOOR
 
 COMMON_TRAINING_CONFIG = {
@@ -392,7 +408,7 @@ def get_config(model_name, mode='train', dataset=None, **overwrite_kwargs):
     check_choices("Model", model_name, ["zoedepth", "zoedepth_nk"])
     check_choices("Mode", mode, ["train", "infer", "eval"])
     if mode == "train":
-        check_choices("Dataset", dataset, ["nyu", "kitti", "mix", "dfc2023s", None])
+        check_choices("Dataset", dataset, ["nyu", "kitti", "mix", "dfc2023s", "dfc2023mini", None])
 
     config = flatten({**COMMON_CONFIG, **COMMON_TRAINING_CONFIG})
     config = update_model_config(config, mode, model_name)

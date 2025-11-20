@@ -85,11 +85,35 @@ class BaseTrainer:
             checkpoint = matches[0]
         else:
             return
+        checkpoint_data = torch.load(checkpoint, map_location=self.device)
         model = load_wts(self.model, checkpoint)
-        # TODO : Resuming training is not properly supported in this repo. Implement loading / saving of optimizer and scheduler to support it.
-        print("Loaded weights from {0}".format(checkpoint))
-        warnings.warn(
-            "Resuming training is not properly supported in this repo. Implement loading / saving of optimizer and scheduler to support it.")
+        
+        # Load optimizer state if available and resume is requested
+        if self.config.resume and 'optimizer' in checkpoint_data and checkpoint_data['optimizer'] is not None:
+            try:
+                self.optimizer.load_state_dict(checkpoint_data['optimizer'])
+                print(f"Loaded optimizer state from {checkpoint}")
+            except Exception as e:
+                print(f"Warning: Could not load optimizer state: {e}")
+        
+        # Load scheduler state if available and resume is requested
+        if self.config.resume and 'scheduler' in checkpoint_data and checkpoint_data['scheduler'] is not None:
+            try:
+                self.scheduler.load_state_dict(checkpoint_data['scheduler'])
+                print(f"Loaded scheduler state from {checkpoint}")
+            except Exception as e:
+                print(f"Warning: Could not load scheduler state: {e}")
+        
+        # Load training state
+        if self.config.resume and 'epoch' in checkpoint_data:
+            self.start_epoch = checkpoint_data.get('epoch', 0) + 1
+            self.step = checkpoint_data.get('step', 0)
+            self.best_loss = checkpoint_data.get('best_loss', np.inf)
+            self.epochs_without_improvement = checkpoint_data.get('epochs_without_improvement', 0)
+            print(f"Resuming from epoch {self.start_epoch}, step {self.step}, best_loss {self.best_loss:.4f}")
+        else:
+            print(f"Loaded weights from {checkpoint} (weights only, no training state)")
+        
         self.model = model
 
     def init_optimizer(self):
@@ -136,8 +160,13 @@ class BaseTrainer:
         return self.config.epochs * self.iters_per_epoch
 
     def should_early_stop(self):
+        # Patience-based early stopping: stops if validation metric doesn't improve for 'patience' validations
+        if self.config.get('early_stop_patience', 0) > 0:
+            return self.epochs_without_improvement >= self.config.early_stop_patience
+        # Legacy step-based early stopping
         if self.config.get('early_stop', False) and self.step > self.config.early_stop:
             return True
+        return False
 
     def train(self):
         print(f"Training {self.config.name}")
@@ -156,8 +185,17 @@ class BaseTrainer:
                        tags=tags, notes=self.config.notes, settings=wandb.Settings(start_method="fork", console="redirect"))
 
         self.model.train()
-        self.step = 0
-        best_loss = np.inf
+        # Initialize training state (may be overwritten by checkpoint loading)
+        if not hasattr(self, 'step'):
+            self.step = 0
+        if not hasattr(self, 'start_epoch'):
+            self.start_epoch = 0
+        if not hasattr(self, 'best_loss'):
+            self.best_loss = np.inf
+        if not hasattr(self, 'epochs_without_improvement'):
+            self.epochs_without_improvement = 0
+        
+        best_loss = self.best_loss
         validate_every = int(self.config.validate_every * self.iters_per_epoch)
 
 
@@ -170,7 +208,7 @@ class BaseTrainer:
         losses = {}
         def stringify_losses(L): return "; ".join(map(
             lambda kv: f"{colors.fg.purple}{kv[0]}{colors.reset}: {round(kv[1].item(),3):.4e}", L.items()))
-        for epoch in range(self.config.epochs):
+        for epoch in range(self.start_epoch, self.config.epochs):
             if self.should_early_stop():
                 break
             
@@ -220,10 +258,19 @@ class BaseTrainer:
                             wandb.log({f"Metrics/{k}": v for k,
                                       v in metrics.items()}, step=self.step)
 
-                            if (metrics[self.metric_criterion] < best_loss) and self.should_write:
+                            # Check for improvement in validation metric
+                            current_loss = metrics[self.metric_criterion]
+                            if (current_loss < best_loss) and self.should_write:
                                 self.save_checkpoint(
                                     f"{self.config.experiment_id}_best.pt")
-                                best_loss = metrics[self.metric_criterion]
+                                best_loss = current_loss
+                                self.best_loss = best_loss
+                                self.epochs_without_improvement = 0
+                                print(f"New best validation {self.metric_criterion}: {best_loss:.4f}")
+                            else:
+                                self.epochs_without_improvement += 1
+                                if self.config.get('early_stop_patience', 0) > 0:
+                                    print(f"No improvement for {self.epochs_without_improvement}/{self.config.early_stop_patience} validations")
 
                         self.model.train()
 
@@ -249,10 +296,12 @@ class BaseTrainer:
                 wandb.log({f"Metrics/{k}": v for k,
                           v in metrics.items()}, step=self.step)
 
-                if (metrics[self.metric_criterion] < best_loss) and self.should_write:
+                current_loss = metrics[self.metric_criterion]
+                if (current_loss < best_loss) and self.should_write:
                     self.save_checkpoint(
                         f"{self.config.experiment_id}_best.pt")
-                    best_loss = metrics[self.metric_criterion]
+                    best_loss = current_loss
+                    self.best_loss = best_loss
 
         self.model.train()
 
@@ -279,12 +328,18 @@ class BaseTrainer:
 
         fpath = os.path.join(root, filename)
         m = self.model.module if self.config.multigpu else self.model
-        torch.save(
-            {
-                "model": m.state_dict(),
-                "optimizer": None,  # TODO : Change to self.optimizer.state_dict() if resume support is needed, currently None to reduce file size
-                "epoch": self.epoch
-            }, fpath)
+        
+        # Save full training state for resume capability
+        checkpoint_data = {
+            "model": m.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "scheduler": self.scheduler.state_dict(),
+            "epoch": self.epoch,
+            "step": self.step,
+            "best_loss": self.best_loss,
+            "epochs_without_improvement": self.epochs_without_improvement
+        }
+        torch.save(checkpoint_data, fpath)
 
     def log_images(self, rgb: Dict[str, list] = {}, depth: Dict[str, list] = {}, scalar_field: Dict[str, list] = {}, prefix="", scalar_cmap="jet", min_depth=None, max_depth=None):
         if not self.should_log:
