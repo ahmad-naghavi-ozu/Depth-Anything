@@ -153,7 +153,7 @@ class BaseTrainer:
             tags = self.config.tags.split(
                 ',') if self.config.tags != '' else None
             wandb.init(project=self.config.project, name=self.config.experiment_id, config=flatten(self.config), dir=self.config.root,
-                       tags=tags, notes=self.config.notes, settings=wandb.Settings(start_method="fork"))
+                       tags=tags, notes=self.config.notes, settings=wandb.Settings(start_method="fork", console="redirect"))
 
         self.model.train()
         self.step = 0
