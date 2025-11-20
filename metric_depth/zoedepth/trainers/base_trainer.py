@@ -272,10 +272,10 @@ class BaseTrainer:
                         metrics, test_losses = self.validate()
                         # print("Validated: {}".format(metrics))
                         if self.should_log:
-                            wandb.log(
-                                {f"Test/{name}": tloss for name, tloss in test_losses.items()}, step=self.step)
-
-                            wandb.log({f"Metrics/{k}": v for k,
+                            # Log the tracking metric separately for easy monitoring
+                            wandb.log({f"Val/Tracking_{self.metric_criterion}": metrics[self.metric_criterion]}, step=self.step)
+                            # Log all validation metrics
+                            wandb.log({f"Val/{k}": v for k,
                                       v in metrics.items()}, step=self.step)
 
                             # Check for improvement in validation metric
@@ -311,9 +311,10 @@ class BaseTrainer:
             metrics, test_losses = self.validate()
             # print("Validated: {}".format(metrics))
             if self.should_log:
-                wandb.log({f"Test/{name}": tloss for name,
-                          tloss in test_losses.items()}, step=self.step)
-                wandb.log({f"Metrics/{k}": v for k,
+                # Log the tracking metric separately for easy monitoring
+                wandb.log({f"Val/Tracking_{self.metric_criterion}": metrics[self.metric_criterion]}, step=self.step)
+                # Log all validation metrics
+                wandb.log({f"Val/{k}": v for k,
                           v in metrics.items()}, step=self.step)
 
                 current_loss = metrics[self.metric_criterion]
