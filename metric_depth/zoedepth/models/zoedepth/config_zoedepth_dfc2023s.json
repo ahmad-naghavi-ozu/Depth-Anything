@@ -16,7 +16,7 @@
         "output_distribution": "logbinomial",
         "memory_efficient": true,
         "inverse_midas": false,
-        "img_size": [392, 518]
+        "img_size": [512, 512]
     },
     
     "train": {
@@ -28,10 +28,11 @@
         "optim_kwargs": {"lr": 0.000161, "wd": 0.01},
         "sched_kwargs": {"div_factor": 1, "final_div_factor": 10000, "pct_start": 0.7, "three_phase":false, "cycle_momentum": true},
         "same_lr": false,
-        "w_si": 1,
+        "w_si": 1.0,
+        "w_l1": 0.5,
         "w_domain": 0.0,
         "w_reg": 0,
-        "w_grad": 0,
+        "w_grad": 0.1,
         "avoid_boundary": false,
         "random_crop": false,
         "input_width": 512,

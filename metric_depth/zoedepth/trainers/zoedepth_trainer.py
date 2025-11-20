@@ -43,6 +43,7 @@ class Trainer(BaseTrainer):
         self.device = device
         self.silog_loss = SILogLoss()
         self.grad_loss = GradL1Loss()
+        self.l1_loss = nn.L1Loss()
         self.scaler = amp.GradScaler(enabled=self.config.use_amp)
 
     def train_on_batch(self, batch, train_step):
@@ -71,6 +72,13 @@ class Trainer(BaseTrainer):
             loss = self.config.w_si * l_si
             losses[self.silog_loss.name] = l_si
 
+            # Add L1 loss for direct absolute error minimization
+            if self.config.get('w_l1', 0) > 0:
+                l_l1 = self.l1_loss(pred[mask], depths_gt[mask])
+                loss = loss + self.config.w_l1 * l_l1
+                losses['L1Loss'] = l_l1
+
+            # Add gradient loss for smoothness
             if self.config.w_grad > 0:
                 l_grad = self.grad_loss(pred, depths_gt, mask=mask)
                 loss = loss + self.config.w_grad * l_grad
