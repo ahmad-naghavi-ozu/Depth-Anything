@@ -193,7 +193,8 @@ class {dataset_name.replace('_', '').replace('-', '')}(Dataset):
             'image': rgb,
             'depth': dsm,
             'mask': mask,
-            'filename': filename
+            'filename': filename,
+            'dataset': '{dataset_key}'
         }}
         
         # Apply transforms
@@ -265,7 +266,9 @@ def get_{dataset_var}_loader(data_dir_root, split='train', batch_size=4,
                 batch_size=config.batch_size,
                 num_workers=config.workers,
                 resize_shape=(config.input_height, config.input_width)
-            )'''
+            )
+            return
+'''
     
     if f"config.dataset == '{dataset_key}'" in data_mono_content:
         print(f"   ⚠️  Dataset loading logic already exists")
@@ -275,16 +278,17 @@ def get_{dataset_var}_loader(data_dir_root, split='train', batch_size=4,
         insert_idx = None
         for i, line in enumerate(lines):
             if "config.dataset == 'dfc2023mini'" in line:
-                # Find the closing of this block
+                # Find the return statement after this block
                 for j in range(i, len(lines)):
-                    if 'resize_shape=' in lines[j]:
-                        insert_idx = j + 2  # After the closing parenthesis
+                    if lines[j].strip() == 'return':
+                        insert_idx = j + 1  # After the return statement
                         break
         
         if insert_idx:
-            # Insert the new dataset logic
+            # Insert blank line then new dataset logic
+            lines.insert(insert_idx, '')
             for line in reversed(dataset_logic.split('\n')):
-                lines.insert(insert_idx, line)
+                lines.insert(insert_idx + 1, line)
             
             with open(data_mono_file, 'w') as f:
                 f.write('\n'.join(lines))
@@ -367,8 +371,9 @@ def get_{dataset_var}_loader(data_dir_root, split='train', batch_size=4,
     if f'check_choices("Dataset", dataset,' in config_content:
         lines = config_content.split('\n')
         for i, line in enumerate(lines):
-            if 'check_choices("Dataset", dataset,' in line and '"dfc2023mini"' in line:
-                if dataset_key not in line:
+            if 'check_choices("Dataset", dataset,' in line and 'mode == "train"' in lines[i-1]:
+                if f'"{dataset_key}"' not in line:
+                    # Add to the list before the closing bracket
                     lines[i] = line.rstrip('])') + f', "{dataset_key}"])'
                     with open(config_file, 'w') as f:
                         f.write('\n'.join(lines))

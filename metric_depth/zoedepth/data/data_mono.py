@@ -43,6 +43,7 @@ from zoedepth.utils.config import change_dataset
 from .ddad import get_ddad_loader
 from .dfc2023s import get_dfc2023s_loader
 from .dfc2023mini import get_dfc2023mini_loader
+from .dfc2019_crp512_bin import get_dfc2019_crp512_bin_loader
 from .dfc2019_crp512_bin_mini import get_dfc2019_crp512_bin_mini_loader
 from .diml_indoor_test import get_diml_indoor_loader
 from .diml_outdoor_test import get_diml_outdoor_loader
@@ -147,6 +148,17 @@ class DepthDataLoader(object):
                 num_workers=config.workers if mode == 'train' else 1
             )
             return
+
+        elif config.dataset == 'dfc2019_crp512_bin':
+            self.data = get_dfc2019_crp512_bin_loader(
+                data_dir_root=config.dfc2019_crp512_bin_root,
+                split=mode,
+                batch_size=config.batch_size,
+                num_workers=config.workers,
+                resize_shape=(config.input_height, config.input_width)
+            )
+            return
+
         
         elif config.dataset == 'dfc2019_crp512_bin_mini':
             self.data = get_dfc2019_crp512_bin_mini_loader(
