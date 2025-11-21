@@ -47,9 +47,33 @@ conda activate depth_anything_rs
 
 ## Training
 
-### Basic Training Command (Single GPU)
+### Using Shell Script (Recommended)
+
+**Multi-GPU Training:**
 ```bash
-python train_rs_height.py \
+# Default configuration (4 GPUs, batch_size=8, epochs=50)
+./rs_height_train.sh
+
+# Single GPU with custom parameters
+./rs_height_train.sh --dataset dfc2023mini --distributed False --gpu-ids 0 --batch-size 2 --epochs 5
+
+# Resume from checkpoint
+./rs_height_train.sh --resume ./checkpoints/rs_height_zoedepth/DFC2023S/model_latest.pt
+
+# Different dataset
+./rs_height_train.sh --dataset dfc2019_crp512_bin --epochs 30 --patience 5
+```
+
+**Show help:**
+```bash
+./rs_height_train.sh --help
+```
+
+### Using Python Script Directly
+
+**Basic Training Command (Single GPU):**
+```bash
+python rs_height_train.py \
     --model zoedepth \
     --dataset dfc2023s \
     --bs 2 \
@@ -57,28 +81,15 @@ python train_rs_height.py \
     --distributed False
 ```
 
-### Multi-GPU Training (Recommended)
+**Multi-GPU Training:**
 ```bash
-python train_rs_height.py \
+python rs_height_train.py \
     --model zoedepth \
     --dataset dfc2023s \
     --midas_model_type dinov2_base \
     --bs 8 \
     --epochs 5 \
     --distributed True
-```
-
-**Training with Log Files:**
-```bash
-# Create log file with timestamp
-python train_rs_height.py \
-    --model zoedepth \
-    --dataset dfc2023s \
-    --midas_model_type dinov2_base \
-    --bs 8 \
-    --epochs 5 \
-    --distributed True \
-    2>&1 | tee ./logs/rs_height_zoedepth/training_$(date +%Y%m%d_%H%M%S).log
 ```
 
 **Training Configuration:**
@@ -97,9 +108,37 @@ python train_rs_height.py \
 
 ## Inference
 
-### Run Inference on Test Set
+### Using Shell Script (Recommended)
+
 ```bash
-python infer_rs_height.py \
+# Basic inference on test set with predictions saved
+./rs_height_infer.sh \
+    --checkpoint ./checkpoints/rs_height_zoedepth/DFC2023S/model_best.pt \
+    --dataset-root /home/asfand/Ahmad/datasets/DFC2023S
+
+# Inference on validation set without saving predictions
+./rs_height_infer.sh \
+    --checkpoint ./checkpoints/rs_height_zoedepth/DFC2023S/model_best.pt \
+    --dataset-root /home/asfand/Ahmad/datasets/DFC2023S \
+    --split val \
+    --no-save-predictions
+
+# Different dataset
+./rs_height_infer.sh \
+    --checkpoint ./checkpoints/rs_height_zoedepth/DFC2023S/model_best.pt \
+    --dataset-root /home/asfand/Ahmad/datasets/Huawei_Contest \
+    --batch-size 4
+```
+
+**Show help:**
+```bash
+./rs_height_infer.sh --help
+```
+
+### Using Python Script Directly
+
+```bash
+python rs_height_infer.py \
     --checkpoint ./checkpoints/rs_height_zoedepth/best_model.pth \
     --dataset-root /home/asfand/Ahmad/datasets/DFC2023S \
     --split test \
@@ -115,16 +154,35 @@ python infer_rs_height.py \
 ./wandb/                              # WandB local logs and metrics
 ```
 
+## Utilities
+
+### Compute Dataset Height Range
+
+```bash
+# Using dataset name (default path: /home/asfand/Ahmad/datasets/)
+./rs_height_compute_range.py --dataset DFC2023S
+./rs_height_compute_range.py --dataset DFC2019_crp512_bin
+./rs_height_compute_range.py --dataset Huawei_Contest
+
+# Using custom dataset path
+./rs_height_compute_range.py /path/to/custom/dataset
+
+# Analyze validation split instead of train
+./rs_height_compute_range.py --dataset DFC2023S --split val
+```
+
 ## Implementation Details
 
 ### Files Added/Modified
 
 **New Files:**
 - `metric_depth/zoedepth/data/dfc2023s.py` - DFC2023S dataset loader
-- `train_rs_height.py` - Training script using ZoeDepth pipeline
-- `infer_rs_height.py` - Inference and evaluation script
+- `rs_height_train.py` - Training script using ZoeDepth pipeline
+- `rs_height_train.sh` - Shell wrapper for training with convenient options
+- `rs_height_infer.py` - Inference and evaluation script
+- `rs_height_infer.sh` - Shell wrapper for inference with convenient options
+- `rs_height_compute_range.py` - Utility to compute dataset height range
 - `metrics_utils.py` - DSM evaluation metrics (copied from other branch)
-- `compute_dsm_range.py` - Utility to compute dataset height range
 
 **Modified Files:**
 - `metric_depth/zoedepth/utils/config.py` - Added DFC2023S dataset config
@@ -181,7 +239,7 @@ Based on similar depth estimation tasks:
 
 ## Comparison with Previous Approach
 
-| Aspect | Previous (height_train.py) | This (train_rs_height.py) |
+| Aspect | Previous (height_train.py) | This (rs_height_train.py) |
 |--------|---------------------------|--------------------------|
 | **Architecture** | Simple DPT (direct regression) | ZoeDepth (bins + attractors) |
 | **Loss** | L1 only | SILog + GradL1 |
@@ -199,8 +257,11 @@ python -c "from zoedepth.utils.config import DATASETS_CONFIG; print(DATASETS_CON
 
 ### Out of Memory
 ```bash
-# Reduce batch size
-python train_rs_height.py --batch_size 4
+# Reduce batch size using shell script
+./rs_height_train.sh --batch-size 4
+
+# Or using Python directly
+python rs_height_train.py --batch_size 4
 ```
 
 ### Check Model Output

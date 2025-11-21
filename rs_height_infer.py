@@ -18,9 +18,9 @@ from pathlib import Path
 
 from zoedepth.models.builder import build_model
 from zoedepth.utils.config import get_config
-from zoedepth.data.dfc2023s import DFC2023S
 from metrics_utils import compute_dsm_metrics, r2_score
 import logging
+import importlib
 
 
 def setup_logging(output_dir):
@@ -117,9 +117,29 @@ def main():
     
     logger.info(f"Model loaded successfully")
     
-    # Load dataset
+    # Load dataset - detect dataset type from path
     logger.info(f"Loading {args.split} set from {args.dataset_root}")
-    dataset = DFC2023S(
+    dataset_name = os.path.basename(args.dataset_root.rstrip('/')).lower()
+    
+    # Import the appropriate dataset class
+    dataset_module = importlib.import_module(f'zoedepth.data.{dataset_name}')
+    
+    # Get the dataset class - look for class with matching name
+    dataset_classes = [obj for name, obj in dataset_module.__dict__.items() 
+                      if isinstance(obj, type) and name.lower().replace('_', '').replace('-', '') == dataset_name.replace('_', '').replace('-', '')]
+    
+    if not dataset_classes:
+        # Fallback: look for any Dataset class in the module
+        dataset_classes = [obj for name, obj in dataset_module.__dict__.items() 
+                          if isinstance(obj, type) and 'dataset' in name.lower()]
+    
+    if not dataset_classes:
+        raise ValueError(f"Could not find dataset class in module 'zoedepth.data.{dataset_name}'")
+    
+    DatasetClass = dataset_classes[0]
+    logger.info(f"Using dataset class: {DatasetClass.__name__}")
+    
+    dataset = DatasetClass(
         data_dir_root=args.dataset_root,
         split=args.split,
         resize_shape=(512, 512)
