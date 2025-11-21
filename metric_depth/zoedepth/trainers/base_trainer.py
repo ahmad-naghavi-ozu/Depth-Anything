@@ -110,13 +110,9 @@ class BaseTrainer:
             except Exception as e:
                 print(f"Warning: Could not load optimizer state: {e}")
         
-        # Load scheduler state if available and resume is requested
-        if resume_flag and 'scheduler' in checkpoint_data and checkpoint_data['scheduler'] is not None:
-            try:
-                self.scheduler.load_state_dict(checkpoint_data['scheduler'])
-                print(f"Loaded scheduler state from {checkpoint}")
-            except Exception as e:
-                print(f"Warning: Could not load scheduler state: {e}")
+        # Note: OneCycleLR scheduler state is NOT loaded when resuming
+        # because it's epoch-dependent and will be reconfigured for remaining epochs
+        # The scheduler was already reinitialized in init_scheduler() with correct remaining epochs
         
         # Load training state
         resume_flag = self.config.get('resume', False)
@@ -156,7 +152,9 @@ class BaseTrainer:
 
     def init_scheduler(self):
         lrs = [l['lr'] for l in self.optimizer.param_groups]
-        return optim.lr_scheduler.OneCycleLR(self.optimizer, lrs, epochs=self.config.epochs, steps_per_epoch=len(self.train_loader),
+        # When resuming, calculate epochs from start_epoch to account for already-completed training
+        epochs_for_scheduler = self.config.epochs - getattr(self, 'start_epoch', 0)
+        return optim.lr_scheduler.OneCycleLR(self.optimizer, lrs, epochs=epochs_for_scheduler, steps_per_epoch=len(self.train_loader),
                                              cycle_momentum=self.config.cycle_momentum,
                                              base_momentum=0.85, max_momentum=0.95, div_factor=self.config.div_factor, final_div_factor=self.config.final_div_factor, pct_start=self.config.pct_start, three_phase=self.config.three_phase)
 
@@ -272,9 +270,6 @@ class BaseTrainer:
                         metrics, test_losses = self.validate()
                         # print("Validated: {}".format(metrics))
                         if self.should_log:
-                            # Log the tracking metric separately for easy monitoring
-                            wandb.log({f"Val/Tracking_{self.metric_criterion}": metrics[self.metric_criterion]}, step=self.step)
-                            # Log all validation metrics
                             wandb.log({f"Val/{k}": v for k,
                                       v in metrics.items()}, step=self.step)
 
@@ -311,9 +306,6 @@ class BaseTrainer:
             metrics, test_losses = self.validate()
             # print("Validated: {}".format(metrics))
             if self.should_log:
-                # Log the tracking metric separately for easy monitoring
-                wandb.log({f"Val/Tracking_{self.metric_criterion}": metrics[self.metric_criterion]}, step=self.step)
-                # Log all validation metrics
                 wandb.log({f"Val/{k}": v for k,
                           v in metrics.items()}, step=self.step)
 
