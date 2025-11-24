@@ -262,9 +262,9 @@ def get_{dataset_var}_loader(data_dir_root, split='train', batch_size=4,
     dataset_logic = f'''        elif config.dataset == '{dataset_key}':
             self.data = get_{dataset_var}_loader(
                 data_dir_root=config.{dataset_var}_root,
-                split=mode,
-                batch_size=config.batch_size,
-                num_workers=config.workers,
+                split='valid' if mode == 'online_eval' else mode,
+                batch_size=config.batch_size if mode == 'train' else 1,
+                num_workers=config.workers if mode == 'train' else 1,
                 resize_shape=(config.input_height, config.input_width)
             )
             return

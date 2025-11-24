@@ -274,6 +274,8 @@ DATASETS_CONFIG = {
         "do_kb_crop": False,
         "garg_crop": False,
         "eigen_crop": False,
+        "validate_every": 0.15,
+        "log_images_every": 0.1,
     },
     "dfc2019_crp512_bin_mini": {
         "dataset": "dfc2019_crp512_bin_mini",

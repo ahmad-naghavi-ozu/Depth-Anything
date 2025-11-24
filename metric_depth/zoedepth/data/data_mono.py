@@ -142,7 +142,7 @@ class DepthDataLoader(object):
         if config.dataset == 'dfc2023mini':
             self.data = get_dfc2023mini_loader(
                 data_dir_root=config.dfc2023mini_root,
-                split='valid' if mode == 'online_eval' else 'train',
+                split='valid' if mode == 'online_eval' else mode,
                 batch_size=config.batch_size if mode == 'train' else 1,
                 resize_shape=None,  # Let model's PrepForMidas handle resize
                 num_workers=config.workers if mode == 'train' else 1
@@ -152,9 +152,9 @@ class DepthDataLoader(object):
         elif config.dataset == 'dfc2019_crp512_bin':
             self.data = get_dfc2019_crp512_bin_loader(
                 data_dir_root=config.dfc2019_crp512_bin_root,
-                split=mode,
-                batch_size=config.batch_size,
-                num_workers=config.workers,
+                split='valid' if mode == 'online_eval' else mode,
+                batch_size=config.batch_size if mode == 'train' else 1,
+                num_workers=config.workers if mode == 'train' else 1,
                 resize_shape=(config.input_height, config.input_width)
             )
             return
@@ -163,9 +163,9 @@ class DepthDataLoader(object):
         elif config.dataset == 'dfc2019_crp512_bin_mini':
             self.data = get_dfc2019_crp512_bin_mini_loader(
                 data_dir_root=config.dfc2019_crp512_bin_mini_root,
-                split=mode,
-                batch_size=config.batch_size,
-                num_workers=config.workers,
+                split='valid' if mode == 'online_eval' else mode,
+                batch_size=config.batch_size if mode == 'train' else 1,
+                num_workers=config.workers if mode == 'train' else 1,
                 resize_shape=(config.input_height, config.input_width)
             )
             return

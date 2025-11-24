@@ -31,8 +31,8 @@ OPTIONS:
     -d, --dataset NAME         Dataset name (default: dfc2023s)
                               Options: dfc2023s, dfc2023mini, dfc2019_crp512_bin, huawei_contest
     --dataset-root PATH        Dataset root directory (default: /home/asfand/Ahmad/datasets)
-    -b, --batch-size N         Batch size per GPU (default: 8)
-    -e, --epochs N             Number of training epochs (default: 50)
+    -b, --batch-size N         Batch size per GPU (default: 6)
+    -e, --epochs N             Number of training epochs (default: 100)
     -w, --workers N            Number of data loading workers (default: 4)
     -p, --patience N           Early stopping patience (default: 10)
     --distributed BOOL         Use distributed training (default: True)
